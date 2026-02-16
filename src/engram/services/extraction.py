@@ -3,6 +3,7 @@
 See ARCHITECTURE.md section 2 for full design.
 
 Integrates:
+- Open Question #1: Vector-based entity resolution (duplicate detection via embeddings)
 - Open Question #2: Relationship type validation (unknown → relates_to fallback)
 - Open Question #3: group_id scoping for cross-conversation entity linking
 - Open Question #4: Confidence snapping to discrete semantic levels
@@ -27,6 +28,7 @@ from engram.models.relationship import Relationship, RelationshipType
 if TYPE_CHECKING:
     from engram.llm.provider import LLMProvider
     from engram.services.dedup import DedupService
+    from engram.services.embeddings import EmbeddingService
     from engram.services.resolution import ConflictResolver
     from engram.storage.base import GraphStore
 
@@ -60,6 +62,9 @@ class ExtractionPipeline:
     Stage 1: Entity extraction (LLM)
     Stage 2: Relationship inference (LLM)
     Stage 3: Conflict resolution (rule-based via ConflictResolver)
+
+    Integrates vector-based entity resolution (Open Question #1) via optional
+    EmbeddingService for duplicate detection.
     """
 
     def __init__(
@@ -68,11 +73,13 @@ class ExtractionPipeline:
         dedup: DedupService,
         resolver: ConflictResolver,
         llm: LLMProvider,
+        embedding_service: EmbeddingService | None = None,
     ) -> None:
         self._store = store
         self._dedup = dedup
         self._resolver = resolver
         self._llm = llm
+        self._embedding_service = embedding_service
 
     async def process_message(self, request: IngestRequest) -> IngestResponse:
         """Process a conversation message through the full extraction pipeline.
@@ -187,6 +194,37 @@ class ExtractionPipeline:
             )
             await self._store.upsert_entity(entity)
             entities.append(entity)
+
+            # Open Question #1: Vector-based entity resolution
+            # Generate embedding and check for potential duplicates
+            if self._embedding_service:
+                try:
+                    # Embed canonical name + aliases for similarity search
+                    text_to_embed = f"{canonical} {' '.join([item['name']])}"
+                    embedding = await self._embedding_service.embed(text_to_embed)
+                    entity.embedding = embedding
+                    await self._store.upsert_entity(entity)
+
+                    # Check for similar entities (potential duplicates)
+                    similar = await self._store.find_similar_entities(
+                        embedding=embedding,
+                        entity_type=entity_type,
+                        limit=3,
+                        threshold=0.85,  # Graphiti uses 0.90, we use 0.85 for warnings
+                    )
+
+                    if similar:
+                        # Log warning for manual review (no auto-merge in MVP)
+                        similar_names = [(e.canonical_name, score) for e, score in similar]
+                        logger.warning(
+                            "Potential duplicate entity detected: '%s' "
+                            "similar to %s. Consider manual merge via POST /entities/%s/merge",
+                            entity.canonical_name,
+                            similar_names,
+                            entity.id,
+                        )
+                except Exception as e:
+                    logger.debug("Entity embedding/similarity check failed: %s", e)
 
         return entities, raw_items
 

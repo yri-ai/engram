@@ -246,6 +246,43 @@ class MemoryStore(GraphStore):
         result.sort(key=lambda e: e.last_mentioned, reverse=True)
         return result[:limit]
 
+    async def find_similar_entities(
+        self,
+        embedding: list[float],
+        entity_type: EntityType,
+        limit: int = 5,
+        threshold: float = 0.85,
+    ) -> list[tuple[Entity, float]]:
+        """Find similar entities using vector similarity (in-memory cosine).
+
+        For testing only. Computes cosine similarity between embeddings.
+        """
+        if not embedding:
+            return []
+
+        import math
+
+        def cosine_similarity(a: list[float], b: list[float]) -> float:
+            if not a or not b or len(a) != len(b):
+                return 0.0
+            dot_product = sum(x * y for x, y in zip(a, b))
+            norm_a = math.sqrt(sum(x * x for x in a))
+            norm_b = math.sqrt(sum(x * x for x in b))
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+            return dot_product / (norm_a * norm_b)
+
+        candidates: list[tuple[Entity, float]] = []
+        for entity in self._entities.values():
+            if entity.entity_type != entity_type or not entity.embedding:
+                continue
+            score = cosine_similarity(embedding, entity.embedding)
+            if score > threshold:
+                candidates.append((entity, score))
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[:limit]
+
     # --- Internal Helpers ---
 
     def _find_entity_ids_by_name(self, tenant_id: str, name: str) -> set[str]:

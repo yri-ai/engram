@@ -66,6 +66,20 @@ class GraphStore(ABC):
         """List entities with filters."""
         ...
 
+    @abstractmethod
+    async def find_similar_entities(
+        self,
+        embedding: list[float],
+        entity_type: EntityType,
+        limit: int = 5,
+        threshold: float = 0.85,
+    ) -> list[tuple[Entity, float]]:
+        """Find similar entities using vector similarity (cosine).
+
+        Returns list of (entity, similarity_score) tuples.
+        """
+        ...
+
     # --- Relationship Operations ---
 
     @abstractmethod
