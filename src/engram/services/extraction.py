@@ -191,9 +191,9 @@ class ExtractionPipeline:
                 canonical_name=canonical,
                 aliases=[item["name"]],
                 source_messages=[message_id],
+                created_at=request.timestamp,  # Fix: Use message timestamp, not now()
+                last_mentioned=request.timestamp,  # Fix: Use message timestamp, not now()
             )
-            await self._store.upsert_entity(entity)
-            entities.append(entity)
 
             # Open Question #1: Vector-based entity resolution
             # Generate embedding and check for potential duplicates
@@ -203,11 +203,18 @@ class ExtractionPipeline:
                     text_to_embed = f"{canonical} {' '.join([item['name']])}"
                     embedding = await self._embedding_service.embed(text_to_embed)
                     entity.embedding = embedding
-                    await self._store.upsert_entity(entity)
+                except Exception as e:
+                    logger.debug("Entity embedding generation failed: %s", e)
 
-                    # Check for similar entities (potential duplicates)
+            # Upsert entity once (after embedding is attached if available)
+            # This avoids double-appending source_messages when embeddings are enabled
+            await self._store.upsert_entity(entity)
+            entities.append(entity)
+
+            if self._embedding_service and entity.embedding:
+                try:
                     similar = await self._store.find_similar_entities(
-                        embedding=embedding,
+                        embedding=entity.embedding,
                         entity_type=entity_type,
                         limit=3,
                         threshold=0.85,  # Graphiti uses 0.90, we use 0.85 for warnings
@@ -224,7 +231,7 @@ class ExtractionPipeline:
                             entity.id,
                         )
                 except Exception as e:
-                    logger.debug("Entity embedding/similarity check failed: %s", e)
+                    logger.debug("Entity similarity check failed: %s", e)
 
         return entities, raw_items
 
