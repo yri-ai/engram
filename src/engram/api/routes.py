@@ -23,13 +23,13 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from engram.api.deps import get_dedup, get_store
+from engram.api.deps import get_dedup, get_pipeline, get_store
 from engram.models.entity import EntityType
 from engram.models.message import IngestRequest, IngestResponse
 from engram.models.relationship import RelationshipType
 
 if TYPE_CHECKING:
-    from engram.api.deps import DedupDep, StoreDep
+    from engram.api.deps import DedupDep, PipelineDep, StoreDep
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +55,7 @@ async def health_check() -> dict:
 @router.post("/messages", response_model=IngestResponse)
 async def ingest_message(
     request: IngestRequest,
-    store: StoreDep = Depends(get_store),  # noqa: B008
-    dedup: DedupDep = Depends(get_dedup),  # noqa: B008
+    pipeline: PipelineDep = Depends(get_pipeline),  # noqa: B008
 ) -> IngestResponse:
     """Ingest a conversation message.
 
@@ -68,52 +67,12 @@ async def ingest_message(
 
     Args:
         request: Message ingestion request
-        store: Graph store
-        dedup: Deduplication service
+        pipeline: Extraction pipeline
 
     Returns:
         IngestResponse with extraction results
     """
-    start_time = time.time()
-
-    # Generate message ID if not provided
-    if not request.message_id:
-        request.message_id = str(uuid.uuid4())
-
-    # Check for duplicates
-    is_new = await dedup.check_and_mark(request.message_id)
-    if not is_new:
-        logger.warning(f"Duplicate message: {request.message_id}")
-        return IngestResponse(
-            message_id=request.message_id,
-            entities_extracted=0,
-            relationships_inferred=0,
-            conflicts_resolved=0,
-            processing_time_ms=0.0,
-        )
-
-    # For MVP: Simple stub that returns success
-    # In full implementation, would call ExtractionPipeline
-    entities_extracted = 0
-    relationships_inferred = 0
-    conflicts_resolved = 0
-
-    # Try to extract entities from text (basic heuristic for MVP)
-    # In production, this would use LLM extraction
-    text_lower = request.text.lower()
-    if "nike" in text_lower or "adidas" in text_lower or "shoe" in text_lower:
-        entities_extracted = 2  # At least entity + preference
-        relationships_inferred = 1
-
-    processing_time_ms = (time.time() - start_time) * 1000
-
-    return IngestResponse(
-        message_id=request.message_id,
-        entities_extracted=entities_extracted,
-        relationships_inferred=relationships_inferred,
-        conflicts_resolved=conflicts_resolved,
-        processing_time_ms=processing_time_ms,
-    )
+    return await pipeline.process_message(request)
 
 
 @router.get("/entities")

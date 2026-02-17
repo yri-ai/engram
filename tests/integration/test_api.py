@@ -26,8 +26,11 @@ from engram.main import create_app
 def client():
     """Create test client with in-memory store."""
     import asyncio
+    from unittest.mock import AsyncMock
     from engram.storage.memory import MemoryStore
     from engram.services.dedup import InMemoryDedup
+    from engram.services.resolution import ConflictResolver
+    from engram.services.extraction import ExtractionPipeline
 
     app = create_app(use_memory_store=True)
 
@@ -35,8 +38,18 @@ def client():
     async def init_app():
         store = MemoryStore()
         await store.initialize()
+        dedup = InMemoryDedup()
+        resolver = ConflictResolver(store)
+
+        # Mock LLM that returns empty extractions (for API stub-level compatibility)
+        llm = AsyncMock()
+        llm.complete_json = AsyncMock(return_value={"entities": [], "relationships": []})
+
+        pipeline = ExtractionPipeline(store=store, dedup=dedup, resolver=resolver, llm=llm)
+
         app.state.store = store
-        app.state.dedup = InMemoryDedup()
+        app.state.dedup = dedup
+        app.state.pipeline = pipeline
 
     # Run async initialization
     asyncio.run(init_app())

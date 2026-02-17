@@ -8,6 +8,7 @@ from fastapi import Depends, Request
 
 from engram.config import Settings
 from engram.services.dedup import DedupService
+from engram.services.extraction import ExtractionPipeline
 from engram.storage.base import GraphStore
 
 
@@ -26,7 +27,13 @@ async def get_dedup(request: Request) -> DedupService:
     return request.app.state.dedup
 
 
+async def get_pipeline(request: Request) -> ExtractionPipeline:
+    """Get extraction pipeline from app state."""
+    return request.app.state.pipeline
+
+
 # Type aliases for dependency injection
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 StoreDep = Annotated[GraphStore, Depends(get_store)]
 DedupDep = Annotated[DedupService, Depends(get_dedup)]
+PipelineDep = Annotated[ExtractionPipeline, Depends(get_pipeline)]

@@ -13,7 +13,10 @@ if TYPE_CHECKING:
 
 from engram.api.routes import router
 from engram.config import Settings
+from engram.llm.provider import LLMProvider
 from engram.services.dedup import InMemoryDedup, RedisDedup
+from engram.services.extraction import ExtractionPipeline
+from engram.services.resolution import ConflictResolver
 from engram.storage.memory import MemoryStore
 from engram.storage.neo4j import Neo4jStore
 
@@ -57,6 +60,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             dedup = InMemoryDedup()
 
     app.state.dedup = dedup
+
+    # Initialize LLM provider
+    logger.info(f"Initializing LLM provider: {settings.llm_model}")
+    llm = LLMProvider(
+        model=settings.llm_model,
+        temperature=settings.llm_temperature,
+        api_key=settings.openai_api_key or None,
+    )
+
+    # Initialize conflict resolver
+    resolver = ConflictResolver(store)
+
+    # Initialize extraction pipeline
+    pipeline = ExtractionPipeline(
+        store=store,
+        dedup=dedup,
+        resolver=resolver,
+        llm=llm,
+        embedding_service=None,  # Optional for MVP
+    )
+    app.state.pipeline = pipeline
 
     logger.info("Engram services initialized successfully")
 
