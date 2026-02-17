@@ -44,9 +44,14 @@ class ConflictResolver:
     def __init__(self, store: GraphStore) -> None:
         self._store = store
 
-    async def resolve_and_create(self, new_rel: Relationship) -> Relationship:
-        """Apply exclusivity policies, terminate conflicts, create new relationship."""
+    async def resolve_and_create(self, new_rel: Relationship) -> tuple[Relationship, int]:
+        """Apply exclusivity policies, terminate conflicts, create new relationship.
+
+        Returns:
+            Tuple of (created relationship, total relationships terminated as conflicts).
+        """
         policy = EXCLUSIVITY_POLICIES.get(new_rel.rel_type, ExclusivityPolicy())
+        total_terminated = 0
 
         if policy.close_on_new:
             max_version = await self._store.get_max_relationship_version(
@@ -65,6 +70,7 @@ class ConflictResolver:
                 termination_time=new_rel.valid_from,
                 exclude_target_id=new_rel.target_id,
             )
+            total_terminated += terminated
             if terminated > 0:
                 logger.info(f"Terminated {terminated} conflicting {new_rel.rel_type} relationships")
 
@@ -82,6 +88,7 @@ class ConflictResolver:
                         termination_time=new_rel.valid_from,
                         exclude_target_id=new_rel.target_id,
                     )
+                    total_terminated += terminated
                     if terminated > 0:
                         logger.info(
                             f"Terminated {terminated} {exclusive_type} relationships "
@@ -92,4 +99,5 @@ class ConflictResolver:
                         f"Invalid relationship type in exclusive_with: {exclusive_type_str}"
                     )
 
-        return await self._store.create_relationship(new_rel)
+        created = await self._store.create_relationship(new_rel)
+        return created, total_terminated

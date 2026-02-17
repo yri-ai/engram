@@ -123,7 +123,8 @@ class ExtractionPipeline:
         # Step 3: Conflict resolution + graph writes
         conflicts = 0
         for rel in relationships:
-            await self._resolver.resolve_and_create(rel)
+            _, terminated = await self._resolver.resolve_and_create(rel)
+            conflicts += terminated
 
         elapsed_ms = (time.monotonic() - start) * 1000
         return IngestResponse(

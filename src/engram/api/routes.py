@@ -492,19 +492,12 @@ async def merge_entities(
     if not duplicate:
         raise HTTPException(status_code=404, detail=f"Duplicate entity not found: {duplicate_id}")
 
-    # Get all relationships from duplicate
-    duplicate_rels = await store.get_active_relationships(duplicate_id)
-
-    # For MVP: Just return success with statistics
-    # In full implementation, would:
-    # 1. Redirect all relationships from duplicate to primary
-    # 2. Mark duplicate as merged
-    # 3. Optionally delete duplicate
+    relationships_transferred = await store.merge_entity_into(entity_id, duplicate_id)
 
     return {
         "primary_id": entity_id,
         "duplicate_id": duplicate_id,
-        "relationships_transferred": len(duplicate_rels),
+        "relationships_transferred": relationships_transferred,
         "status": "merged",
         "message": f"Merged {duplicate_id} into {entity_id}",
     }

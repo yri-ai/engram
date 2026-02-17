@@ -126,6 +126,23 @@ class GraphStore(ABC):
         """
         ...
 
+    # --- Entity Merge ---
+
+    @abstractmethod
+    async def merge_entity_into(
+        self,
+        primary_id: str,
+        duplicate_id: str,
+    ) -> int:
+        """Merge duplicate entity into primary. Returns count of relationships redirected.
+
+        Steps:
+        1. Redirect all relationships (source or target) from duplicate to primary
+        2. Merge aliases and source_messages into primary entity
+        3. Mark duplicate with metadata merged_into=primary_id
+        """
+        ...
+
     # --- Temporal Queries ---
 
     @abstractmethod

@@ -414,6 +414,55 @@ class Neo4jStore(GraphStore):
         )
         return result[0]["max_version"] if result else 0
 
+    # --- Entity Merge ---
+
+    async def merge_entity_into(self, primary_id: str, duplicate_id: str) -> int:
+        # Redirect outgoing relationships: (duplicate)->[:R]->(target) → (primary)->[:R]->(target)
+        outgoing = await self._execute_write(
+            """
+            MATCH (dup:Entity {id: $dup_id})-[r:RELATIONSHIP]->(target:Entity)
+            MATCH (primary:Entity {id: $primary_id})
+            CREATE (primary)-[r2:RELATIONSHIP]->(target)
+            SET r2 = properties(r)
+            DELETE r
+            RETURN count(r2) AS cnt
+            """,
+            dup_id=duplicate_id,
+            primary_id=primary_id,
+        )
+        out_count = outgoing[0]["cnt"] if outgoing else 0
+
+        # Redirect incoming relationships: (source)->[:R]->(duplicate) → (source)->[:R]->(primary)
+        incoming = await self._execute_write(
+            """
+            MATCH (source:Entity)-[r:RELATIONSHIP]->(dup:Entity {id: $dup_id})
+            MATCH (primary:Entity {id: $primary_id})
+            CREATE (source)-[r2:RELATIONSHIP]->(primary)
+            SET r2 = properties(r)
+            DELETE r
+            RETURN count(r2) AS cnt
+            """,
+            dup_id=duplicate_id,
+            primary_id=primary_id,
+        )
+        in_count = incoming[0]["cnt"] if incoming else 0
+
+        # Merge aliases, source_messages; mark duplicate
+        await self._execute_write(
+            """
+            MATCH (primary:Entity {id: $primary_id}), (dup:Entity {id: $dup_id})
+            SET primary.aliases = [a IN primary.aliases WHERE NOT a IN dup.aliases] + dup.aliases
+                + CASE WHEN NOT dup.canonical_name IN primary.aliases
+                       THEN [dup.canonical_name] ELSE [] END,
+                primary.source_messages = primary.source_messages + dup.source_messages,
+                dup.metadata = '{"merged_into": "' + $primary_id + '"}'
+            """,
+            primary_id=primary_id,
+            dup_id=duplicate_id,
+        )
+
+        return out_count + in_count
+
     # --- Temporal Queries ---
 
     async def query_world_state_as_of(

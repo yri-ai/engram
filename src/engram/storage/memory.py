@@ -170,6 +170,40 @@ class MemoryStore(GraphStore):
                 max_version = max(max_version, r.version)
         return max_version
 
+    # --- Entity Merge ---
+
+    async def merge_entity_into(self, primary_id: str, duplicate_id: str) -> int:
+        primary = self._entities.get(primary_id)
+        duplicate = self._entities.get(duplicate_id)
+        if not primary or not duplicate:
+            return 0
+
+        redirected = 0
+        for r in self._relationships:
+            changed = False
+            if r.source_id == duplicate_id:
+                r.source_id = primary_id
+                changed = True
+            if r.target_id == duplicate_id:
+                r.target_id = primary_id
+                changed = True
+            if changed:
+                redirected += 1
+
+        for alias in duplicate.aliases:
+            if alias not in primary.aliases:
+                primary.aliases.append(alias)
+        if duplicate.canonical_name not in primary.aliases:
+            primary.aliases.append(duplicate.canonical_name)
+
+        for msg in duplicate.source_messages:
+            if msg not in primary.source_messages:
+                primary.source_messages.append(msg)
+
+        duplicate.metadata["merged_into"] = primary_id
+
+        return redirected
+
     # --- Temporal Queries ---
 
     async def query_world_state_as_of(
