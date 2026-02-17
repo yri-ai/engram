@@ -49,6 +49,7 @@ async def test_prefers_enforces_single_active(store_with_entities):
     nike_rel = Relationship(
         tenant_id="t1",
         conversation_id="c1",
+        group_id="c1",
         message_id="msg-1",
         source_id="t1:c1:PERSON:kendra",
         target_id="t1:c1:PREFERENCE:nike",
@@ -64,6 +65,7 @@ async def test_prefers_enforces_single_active(store_with_entities):
     adidas_rel = Relationship(
         tenant_id="t1",
         conversation_id="c1",
+        group_id="c1",
         message_id="msg-2",
         source_id="t1:c1:PERSON:kendra",
         target_id="t1:c1:PREFERENCE:adidas",

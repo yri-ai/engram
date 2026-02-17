@@ -355,7 +355,7 @@ class Neo4jStore(GraphStore):
         source_id: str,
         rel_type: RelationshipType,
         tenant_id: str,
-        conversation_id: str,
+        group_id: str,
         termination_time: datetime,
         exclude_target_id: str | None = None,
     ) -> int:
@@ -367,7 +367,7 @@ class Neo4jStore(GraphStore):
             MATCH (source:Entity {id: $source_id})-[r:RELATIONSHIP]->(target:Entity)
             WHERE r.type = $type
               AND r.tenant_id = $tenant_id
-              AND r.conversation_id = $conversation_id
+              AND r.group_id = $group_id
               AND r.valid_to IS NULL
               AND r.recorded_to IS NULL
         """
@@ -375,7 +375,7 @@ class Neo4jStore(GraphStore):
             "source_id": source_id,
             "type": rel_type.value,
             "tenant_id": tenant_id,
-            "conversation_id": conversation_id,
+            "group_id": group_id,
             "termination_time": termination_time.isoformat(),
         }
 
@@ -396,13 +396,13 @@ class Neo4jStore(GraphStore):
         source_id: str,
         rel_type: RelationshipType,
         tenant_id: str,
-        conversation_id: str,
+        group_id: str,
     ) -> int:
         query = """
             MATCH (source:Entity {id: $source_id})-[r:RELATIONSHIP]->()
             WHERE r.type = $type
               AND r.tenant_id = $tenant_id
-              AND r.conversation_id = $conversation_id
+              AND r.group_id = $group_id
             RETURN COALESCE(MAX(r.version), 0) AS max_version
         """
         result = await self._execute_read(
@@ -410,7 +410,7 @@ class Neo4jStore(GraphStore):
             source_id=source_id,
             type=rel_type.value,
             tenant_id=tenant_id,
-            conversation_id=conversation_id,
+            group_id=group_id,
         )
         return result[0]["max_version"] if result else 0
 

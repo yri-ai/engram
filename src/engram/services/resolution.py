@@ -52,13 +52,14 @@ class ConflictResolver:
         """
         policy = EXCLUSIVITY_POLICIES.get(new_rel.rel_type, ExclusivityPolicy())
         total_terminated = 0
+        group_id = new_rel.group_id or new_rel.conversation_id
 
         if policy.close_on_new:
             max_version = await self._store.get_max_relationship_version(
                 source_id=new_rel.source_id,
                 rel_type=new_rel.rel_type,
                 tenant_id=new_rel.tenant_id,
-                conversation_id=new_rel.conversation_id,
+                group_id=group_id,
             )
             new_rel.version = max_version + 1
 
@@ -66,7 +67,7 @@ class ConflictResolver:
                 source_id=new_rel.source_id,
                 rel_type=new_rel.rel_type,
                 tenant_id=new_rel.tenant_id,
-                conversation_id=new_rel.conversation_id,
+                group_id=group_id,
                 termination_time=new_rel.valid_from,
                 exclude_target_id=new_rel.target_id,
             )
@@ -84,7 +85,7 @@ class ConflictResolver:
                         source_id=new_rel.source_id,
                         rel_type=exclusive_type,
                         tenant_id=new_rel.tenant_id,
-                        conversation_id=new_rel.conversation_id,
+                        group_id=group_id,
                         termination_time=new_rel.valid_from,
                         exclude_target_id=new_rel.target_id,
                     )

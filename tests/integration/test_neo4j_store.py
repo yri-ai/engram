@@ -211,7 +211,7 @@ class TestNeo4jStoreRelationships:
             source_id=rel.source_id,
             rel_type=RelationshipType.PREFERS,
             tenant_id="t1",
-            conversation_id="c1",
+            group_id="c1",
             termination_time=now,
         )
         assert count == 1
@@ -235,7 +235,7 @@ class TestNeo4jStoreRelationships:
             source_id=nike_rel.source_id,
             rel_type=RelationshipType.PREFERS,
             tenant_id="t1",
-            conversation_id="c1",
+            group_id="c1",
             termination_time=now,
             exclude_target_id=adidas_rel.target_id,
         )

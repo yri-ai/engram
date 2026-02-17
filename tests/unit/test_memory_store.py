@@ -43,6 +43,7 @@ def _make_rel(
     return Relationship(
         tenant_id="t1",
         conversation_id="c1",
+        group_id="c1",
         message_id="msg-1",
         source_id=Entity.build_id("t1", EntityType.PERSON, source_name, group_id="c1"),
         target_id=Entity.build_id("t1", EntityType.PREFERENCE, target_name, group_id="c1"),
@@ -200,7 +201,7 @@ class TestMemoryStoreRelationships:
             source_id=rel.source_id,
             rel_type=RelationshipType.PREFERS,
             tenant_id="t1",
-            conversation_id="c1",
+            group_id="c1",
             termination_time=now,
         )
         assert count == 1
@@ -224,7 +225,7 @@ class TestMemoryStoreRelationships:
             source_id=nike_rel.source_id,
             rel_type=RelationshipType.PREFERS,
             tenant_id="t1",
-            conversation_id="c1",
+            group_id="c1",
             termination_time=now,
             exclude_target_id=adidas_rel.target_id,
         )

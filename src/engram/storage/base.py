@@ -105,7 +105,7 @@ class GraphStore(ABC):
         source_id: str,
         rel_type: RelationshipType,
         tenant_id: str,
-        conversation_id: str,
+        group_id: str,
         termination_time: datetime,
         exclude_target_id: str | None = None,
     ) -> int:
@@ -118,7 +118,7 @@ class GraphStore(ABC):
         source_id: str,
         rel_type: RelationshipType,
         tenant_id: str,
-        conversation_id: str,
+        group_id: str,
     ) -> int:
         """Get maximum version number for a relationship type from a source entity.
 

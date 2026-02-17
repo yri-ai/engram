@@ -131,7 +131,7 @@ class MemoryStore(GraphStore):
         source_id: str,
         rel_type: RelationshipType,
         tenant_id: str,
-        conversation_id: str,
+        group_id: str,
         termination_time: datetime,
         exclude_target_id: str | None = None,
     ) -> int:
@@ -142,7 +142,7 @@ class MemoryStore(GraphStore):
                 r.source_id == source_id
                 and r.rel_type == rel_type
                 and r.tenant_id == tenant_id
-                and r.conversation_id == conversation_id
+                and r.group_id == group_id
                 and r.is_active
                 and r.is_currently_believed
                 and (exclude_target_id is None or r.target_id != exclude_target_id)
@@ -157,7 +157,7 @@ class MemoryStore(GraphStore):
         source_id: str,
         rel_type: RelationshipType,
         tenant_id: str,
-        conversation_id: str,
+        group_id: str,
     ) -> int:
         max_version = 0
         for r in self._relationships:
@@ -165,7 +165,7 @@ class MemoryStore(GraphStore):
                 r.source_id == source_id
                 and r.rel_type == rel_type
                 and r.tenant_id == tenant_id
-                and r.conversation_id == conversation_id
+                and r.group_id == group_id
             ):
                 max_version = max(max_version, r.version)
         return max_version
