@@ -25,6 +25,15 @@ class DedupService(ABC):
         ...
 
     @abstractmethod
+    async def rollback(self, message_id: str) -> None:
+        """Unmark a message_id so it can be retried.
+
+        Called when pipeline processing fails after check_and_mark succeeded,
+        so a transient error does not permanently suppress the message.
+        """
+        ...
+
+    @abstractmethod
     async def close(self) -> None:
         """Clean up resources."""
         ...
@@ -51,6 +60,9 @@ class InMemoryDedup(DedupService):
         self._processed.add(message_id)
         return True
 
+    async def rollback(self, message_id: str) -> None:
+        self._processed.discard(message_id)
+
     async def close(self) -> None:
         self._processed.clear()
 
@@ -70,6 +82,10 @@ class RedisDedup(DedupService):
         key = f"engram:processed:{message_id}"
         is_new = await self._redis.set(key, "1", nx=True, ex=self._ttl)  # type: ignore[attr-defined]
         return is_new is not None  # Redis returns None if key already exists
+
+    async def rollback(self, message_id: str) -> None:
+        key = f"engram:processed:{message_id}"
+        await self._redis.delete(key)  # type: ignore[attr-defined]
 
     async def close(self) -> None:
         pass  # Redis client lifecycle managed externally

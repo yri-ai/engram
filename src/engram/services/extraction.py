@@ -90,7 +90,8 @@ class ExtractionPipeline:
         start = time.monotonic()
         message_id = request.message_id or str(uuid.uuid4())
 
-        # Step 0: Idempotency check
+        # Step 0: Idempotency check — mark before pipeline so concurrent duplicates
+        # are rejected atomically. Rolled back if the pipeline fails so retries work.
         is_new = await self._dedup.check_and_mark(message_id)
         if not is_new:
             return IngestResponse(
@@ -101,30 +102,35 @@ class ExtractionPipeline:
                 processing_time_ms=0,
             )
 
-        # Step 1: Entity extraction (LLM)
-        entities, raw_entity_items = await self._extract_entities(request, message_id)
+        try:
+            # Step 1: Entity extraction (LLM)
+            entities, raw_entity_items = await self._extract_entities(request, message_id)
 
-        # No entities → nothing to infer, skip Stage 2
-        if not entities:
-            elapsed_ms = (time.monotonic() - start) * 1000
-            return IngestResponse(
-                message_id=message_id,
-                entities_extracted=0,
-                relationships_inferred=0,
-                conflicts_resolved=0,
-                processing_time_ms=round(elapsed_ms, 2),
+            # No entities → nothing to infer, skip Stage 2
+            if not entities:
+                elapsed_ms = (time.monotonic() - start) * 1000
+                return IngestResponse(
+                    message_id=message_id,
+                    entities_extracted=0,
+                    relationships_inferred=0,
+                    conflicts_resolved=0,
+                    processing_time_ms=round(elapsed_ms, 2),
+                )
+
+            # Step 2: Relationship inference (LLM)
+            relationships = await self._infer_relationships(
+                request, entities, raw_entity_items, message_id
             )
 
-        # Step 2: Relationship inference (LLM)
-        relationships = await self._infer_relationships(
-            request, entities, raw_entity_items, message_id
-        )
+            # Step 3: Conflict resolution + graph writes
+            conflicts = 0
+            for rel in relationships:
+                _, terminated = await self._resolver.resolve_and_create(rel)
+                conflicts += terminated
 
-        # Step 3: Conflict resolution + graph writes
-        conflicts = 0
-        for rel in relationships:
-            _, terminated = await self._resolver.resolve_and_create(rel)
-            conflicts += terminated
+        except Exception:
+            await self._dedup.rollback(message_id)
+            raise
 
         elapsed_ms = (time.monotonic() - start) * 1000
         return IngestResponse(
