@@ -53,6 +53,7 @@ class ConflictResolver:
         policy = EXCLUSIVITY_POLICIES.get(new_rel.rel_type, ExclusivityPolicy())
         total_terminated = 0
         group_id = new_rel.group_id or new_rel.conversation_id
+        new_rel.group_id = group_id  # ensure stored row carries the same scope used for queries
 
         if policy.close_on_new:
             max_version = await self._store.get_max_relationship_version(
