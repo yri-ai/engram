@@ -83,6 +83,109 @@ async def test_prefers_enforces_single_active(store_with_entities):
     assert active[0].target_id.endswith("adidas")
 
 
+async def test_repeated_prefers_closes_previous_version(store_with_entities):
+    """Repeated preference for same target should still version and close prior edge."""
+    store = store_with_entities
+    resolver = ConflictResolver(store)
+    now = datetime.now(UTC)
+
+    preference = Relationship(
+        tenant_id="t1",
+        conversation_id="c1",
+        group_id="c1",
+        message_id="msg-1",
+        source_id="t1:c1:PERSON:kendra",
+        target_id="t1:c1:PREFERENCE:nike",
+        rel_type=RelationshipType.PREFERS,
+        confidence=0.9,
+        evidence="Nike is great",
+        valid_from=now,
+        recorded_from=now,
+    )
+    await resolver.resolve_and_create(preference)
+
+    # Repeat preference for Nike later
+    preference2 = preference.model_copy(update={"message_id": "msg-2"})
+    await resolver.resolve_and_create(preference2)
+
+    active = await store.get_active_relationships("t1:c1:PERSON:kendra")
+    assert len(active) == 1
+    assert active[0].target_id.endswith("nike")
+    assert active[0].version == 2
+
+
+async def test_avoids_closes_prefers(store_with_entities):
+    """exclusive_with policies should terminate conflicting relationship types."""
+    store = store_with_entities
+    resolver = ConflictResolver(store)
+    now = datetime.now(UTC)
+
+    prefers_rel = Relationship(
+        tenant_id="t1",
+        conversation_id="c1",
+        group_id="c1",
+        message_id="msg-1",
+        source_id="t1:c1:PERSON:kendra",
+        target_id="t1:c1:PREFERENCE:nike",
+        rel_type=RelationshipType.PREFERS,
+        confidence=0.95,
+        evidence="Loves Nike",
+        valid_from=now,
+        recorded_from=now,
+    )
+    await resolver.resolve_and_create(prefers_rel)
+
+    avoids_rel = prefers_rel.model_copy(
+        update={
+            "message_id": "msg-2",
+            "rel_type": RelationshipType.AVOIDS,
+            "evidence": "Now avoids Nike",
+        }
+    )
+    await resolver.resolve_and_create(avoids_rel)
+
+    active = await store.get_active_relationships("t1:c1:PERSON:kendra")
+    assert len(active) == 1
+    assert active[0].rel_type == RelationshipType.AVOIDS
+    assert active[0].target_id.endswith("nike")
+
+
+async def test_prefers_closes_avoids(store_with_entities):
+    """Reciprocal exclusivity: new prefers should close existing avoids."""
+    store = store_with_entities
+    resolver = ConflictResolver(store)
+    now = datetime.now(UTC)
+
+    avoids_rel = Relationship(
+        tenant_id="t1",
+        conversation_id="c1",
+        group_id="c1",
+        message_id="msg-avoid",
+        source_id="t1:c1:PERSON:kendra",
+        target_id="t1:c1:PREFERENCE:nike",
+        rel_type=RelationshipType.AVOIDS,
+        confidence=0.9,
+        evidence="Avoiding Nike",
+        valid_from=now,
+        recorded_from=now,
+    )
+    await resolver.resolve_and_create(avoids_rel)
+
+    prefers_rel = avoids_rel.model_copy(
+        update={
+            "message_id": "msg-pref",
+            "rel_type": RelationshipType.PREFERS,
+            "evidence": "Prefers Nike again",
+        }
+    )
+    await resolver.resolve_and_create(prefers_rel)
+
+    active = await store.get_active_relationships("t1:c1:PERSON:kendra")
+    assert len(active) == 1
+    assert active[0].rel_type == RelationshipType.PREFERS
+    assert active[0].target_id.endswith("nike")
+
+
 async def test_knows_allows_multiple_active(store_with_entities):
     """'knows' relationships should allow multiple active."""
     store = store_with_entities

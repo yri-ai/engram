@@ -20,6 +20,7 @@ EXCLUSIVITY_POLICIES: dict[str, ExclusivityPolicy] = {
         exclusivity_scope=("source",),
         max_active=1,
         close_on_new=True,
+        exclusive_with=["avoids"],
     ),
     "avoids": ExclusivityPolicy(
         exclusivity_scope=("source",),
@@ -70,7 +71,6 @@ class ConflictResolver:
                 tenant_id=new_rel.tenant_id,
                 group_id=group_id,
                 termination_time=new_rel.valid_from,
-                exclude_target_id=new_rel.target_id,
             )
             total_terminated += terminated
             if terminated > 0:
@@ -88,7 +88,6 @@ class ConflictResolver:
                         tenant_id=new_rel.tenant_id,
                         group_id=group_id,
                         termination_time=new_rel.valid_from,
-                        exclude_target_id=new_rel.target_id,
                     )
                     total_terminated += terminated
                     if terminated > 0:
