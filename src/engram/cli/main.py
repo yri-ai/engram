@@ -156,6 +156,7 @@ def health() -> None:
         store = Neo4jStore(settings)
 
         # Check Neo4j
+        asyncio.run(store.initialize())
         neo4j_healthy = asyncio.run(store.health_check())
         asyncio.run(store.close())
 

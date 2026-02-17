@@ -221,7 +221,7 @@ async def point_in_time_query(
     rel_type: str | None = Query(None),
     mode: str = Query("world_state"),
     store: StoreDep = Depends(get_store),  # noqa: B008
-) -> list[dict]:
+) -> list[dict] | dict[str, list[dict]]:
     """Query world state at a point in time.
 
     Supports three temporal modes:
@@ -262,7 +262,52 @@ async def point_in_time_query(
             as_of=as_of_dt,
             rel_type=parsed_type,
         )
-    else:  # world_state or bitemporal (both use valid_time)
+    elif mode == "bitemporal":
+        world_state = await store.query_world_state_as_of(
+            tenant_id=tenant_id,
+            entity_name=entity,
+            as_of=as_of_dt,
+            rel_type=parsed_type,
+        )
+        knowledge = await store.query_knowledge_as_of(
+            tenant_id=tenant_id,
+            entity_name=entity,
+            as_of=as_of_dt,
+            rel_type=parsed_type,
+        )
+        return {
+            "world_state": [
+                {
+                    "source_id": r.source_id,
+                    "target_id": r.target_id,
+                    "rel_type": r.rel_type.value,
+                    "confidence": r.confidence,
+                    "evidence": r.evidence,
+                    "valid_from": r.valid_from.isoformat(),
+                    "valid_to": r.valid_to.isoformat() if r.valid_to else None,
+                    "recorded_from": r.recorded_from.isoformat(),
+                    "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
+                    "version": r.version,
+                }
+                for r in world_state
+            ],
+            "knowledge": [
+                {
+                    "source_id": r.source_id,
+                    "target_id": r.target_id,
+                    "rel_type": r.rel_type.value,
+                    "confidence": r.confidence,
+                    "evidence": r.evidence,
+                    "valid_from": r.valid_from.isoformat(),
+                    "valid_to": r.valid_to.isoformat() if r.valid_to else None,
+                    "recorded_from": r.recorded_from.isoformat(),
+                    "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
+                    "version": r.version,
+                }
+                for r in knowledge
+            ],
+        }
+    else:  # world_state
         relationships = await store.query_world_state_as_of(
             tenant_id=tenant_id,
             entity_name=entity,
