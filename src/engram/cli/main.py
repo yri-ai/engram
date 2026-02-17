@@ -169,7 +169,8 @@ def health() -> None:
                 import redis.asyncio as aioredis
 
                 redis_client = aioredis.from_url(
-                    f"redis://{settings.redis_host}:{settings.redis_port}",
+                    f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
+                    password=settings.redis_password,
                     decode_responses=True,
                 )
                 redis_healthy = asyncio.run(redis_client.ping())
