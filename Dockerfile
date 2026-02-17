@@ -7,7 +7,7 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Copy dependency files
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 # Install all dependencies (including dev for in-container testing)
 RUN uv sync --frozen --no-install-project
@@ -31,7 +31,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY --from=builder /app/.venv /app/.venv
 
 # Copy project files (needed for uv run and test execution)
-COPY --from=builder /app/pyproject.toml /app/uv.lock ./
+COPY --from=builder /app/pyproject.toml /app/uv.lock /app/README.md ./
 COPY --from=builder /app/src/ src/
 COPY --from=builder /app/tests/ tests/
 

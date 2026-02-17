@@ -43,6 +43,7 @@ redis_data/
 # Documentation (not needed in image)
 docs/
 *.md
+!README.md
 LICENSE
 
 # OS files

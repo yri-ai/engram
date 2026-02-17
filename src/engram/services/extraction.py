@@ -275,11 +275,23 @@ class ExtractionPipeline:
         result = await self._llm.complete_json(prompt)
         group_id = request.group_id or request.conversation_id
 
+        # Expand mention resolution pool to include all entities known for this
+        # conversation. The LLM often references the speaker or entities from earlier
+        # messages that weren't re-extracted from the current message text
+        # (e.g., "I love Nike..." where "I" resolves to the Kendra entity from msg 1).
+        context_entities = await self._store.list_entities(
+            tenant_id=request.tenant_id,
+            conversation_id=request.conversation_id,
+            limit=100,
+        )
+        current_ids = {e.id for e in entities}
+        resolution_pool = entities + [e for e in context_entities if e.id not in current_ids]
+
         relationships: list[Relationship] = []
         for item in result.get("relationships", []):
             # Map LLM mention strings to Entity objects
-            source = self._find_entity_by_mention(item.get("source_mention", ""), entities)
-            target = self._find_entity_by_mention(item.get("target_mention", ""), entities)
+            source = self._find_entity_by_mention(item.get("source_mention", ""), resolution_pool)
+            target = self._find_entity_by_mention(item.get("target_mention", ""), resolution_pool)
 
             if source is None or target is None:
                 logger.warning(

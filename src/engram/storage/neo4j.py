@@ -479,13 +479,13 @@ class Neo4jStore(GraphStore):
         query = """
             MATCH (e:Entity)-[r:RELATIONSHIP]->(target:Entity)
             WHERE e.tenant_id = $tenant_id
-              AND e.canonical_name = $entity_name
+              AND toLower(e.canonical_name) = $entity_name
               AND $as_of >= r.valid_from
               AND (r.valid_to IS NULL OR $as_of < r.valid_to)
         """
         params: dict[str, Any] = {
             "tenant_id": tenant_id,
-            "entity_name": Entity.normalize_name(entity_name),
+            "entity_name": entity_name.lower(),
             "as_of": as_of.isoformat(),
         }
 
@@ -511,13 +511,13 @@ class Neo4jStore(GraphStore):
         query = """
             MATCH (e:Entity)-[r:RELATIONSHIP]->(target:Entity)
             WHERE e.tenant_id = $tenant_id
-              AND e.canonical_name = $entity_name
+              AND toLower(e.canonical_name) = $entity_name
               AND $as_of >= r.recorded_from
               AND (r.recorded_to IS NULL OR $as_of < r.recorded_to)
         """
         params: dict[str, Any] = {
             "tenant_id": tenant_id,
-            "entity_name": Entity.normalize_name(entity_name),
+            "entity_name": entity_name.lower(),
             "as_of": as_of.isoformat(),
         }
 
@@ -540,16 +540,16 @@ class Neo4jStore(GraphStore):
         query = """
             MATCH (e:Entity)-[r:RELATIONSHIP]->(target:Entity)
             WHERE e.tenant_id = $tenant_id
-              AND e.canonical_name = $entity_name
+              AND toLower(e.canonical_name) = $entity_name
         """
         params: dict[str, Any] = {
             "tenant_id": tenant_id,
-            "entity_name": Entity.normalize_name(entity_name),
+            "entity_name": entity_name.lower(),
         }
 
         if target_name:
-            query += " AND target.canonical_name = $target_name"
-            params["target_name"] = Entity.normalize_name(target_name)
+            query += " AND toLower(target.canonical_name) = $target_name"
+            params["target_name"] = target_name.lower()
         if rel_type:
             query += " AND r.type = $rel_type"
             params["rel_type"] = rel_type.value
