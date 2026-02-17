@@ -68,4 +68,28 @@ class ConflictResolver:
             if terminated > 0:
                 logger.info(f"Terminated {terminated} conflicting {new_rel.rel_type} relationships")
 
+        if policy.exclusive_with:
+            from engram.models.relationship import RelationshipType
+
+            for exclusive_type_str in policy.exclusive_with:
+                try:
+                    exclusive_type = RelationshipType(exclusive_type_str)
+                    terminated = await self._store.terminate_relationship(
+                        source_id=new_rel.source_id,
+                        rel_type=exclusive_type,
+                        tenant_id=new_rel.tenant_id,
+                        conversation_id=new_rel.conversation_id,
+                        termination_time=new_rel.valid_from,
+                        exclude_target_id=new_rel.target_id,
+                    )
+                    if terminated > 0:
+                        logger.info(
+                            f"Terminated {terminated} {exclusive_type} relationships "
+                            f"(exclusive with {new_rel.rel_type})"
+                        )
+                except ValueError:
+                    logger.warning(
+                        f"Invalid relationship type in exclusive_with: {exclusive_type_str}"
+                    )
+
         return await self._store.create_relationship(new_rel)

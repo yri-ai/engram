@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             import redis.asyncio as aioredis
 
-            redis_client = await aioredis.from_url(
+            redis_client = aioredis.from_url(
                 f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
                 password=settings.redis_password,
                 decode_responses=True,
