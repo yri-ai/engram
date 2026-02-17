@@ -1,0 +1,35 @@
+{
+  "conversation_id": "coaching-session-1",
+  "messages": [
+    {
+      "text": "Hi, I'm Kendra. I've been training for the Boston Marathon.",
+      "speaker": "Kendra",
+      "timestamp": "2024-01-15T10:00:00Z"
+    },
+    {
+      "text": "I love Nike running shoes, they're the best for long distance.",
+      "speaker": "Kendra",
+      "timestamp": "2024-01-15T10:05:00Z"
+    },
+    {
+      "text": "My goal is to finish the Boston Marathon under 4 hours.",
+      "speaker": "Kendra",
+      "timestamp": "2024-01-15T10:10:00Z"
+    },
+    {
+      "text": "I've been working with Coach Sarah on my training plan.",
+      "speaker": "Kendra",
+      "timestamp": "2024-02-01T14:00:00Z"
+    },
+    {
+      "text": "Actually, I switched to Adidas. The arch support is much better for my feet.",
+      "speaker": "Kendra",
+      "timestamp": "2024-03-20T14:30:00Z"
+    },
+    {
+      "text": "I completed the Boston Marathon! Finished in 3:45:00.",
+      "speaker": "Kendra",
+      "timestamp": "2024-04-15T18:00:00Z"
+    }
+  ]
+}
