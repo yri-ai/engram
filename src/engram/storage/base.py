@@ -73,10 +73,12 @@ class GraphStore(ABC):
         entity_type: EntityType,
         limit: int = 5,
         threshold: float = 0.85,
+        exclude_id: str | None = None,
     ) -> list[tuple[Entity, float]]:
         """Find similar entities using vector similarity (cosine).
 
         Returns list of (entity, similarity_score) tuples.
+        Excludes entity with exclude_id if provided (to avoid self-matching).
         """
         ...
 
@@ -108,6 +110,20 @@ class GraphStore(ABC):
         exclude_target_id: str | None = None,
     ) -> int:
         """Terminate active relationships. Returns count of terminated."""
+        ...
+
+    @abstractmethod
+    async def get_max_relationship_version(
+        self,
+        source_id: str,
+        rel_type: RelationshipType,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> int:
+        """Get maximum version number for a relationship type from a source entity.
+
+        Returns 0 if no relationships exist.
+        """
         ...
 
     # --- Temporal Queries ---

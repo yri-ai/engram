@@ -152,6 +152,24 @@ class MemoryStore(GraphStore):
                 count += 1
         return count
 
+    async def get_max_relationship_version(
+        self,
+        source_id: str,
+        rel_type: RelationshipType,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> int:
+        max_version = 0
+        for r in self._relationships:
+            if (
+                r.source_id == source_id
+                and r.rel_type == rel_type
+                and r.tenant_id == tenant_id
+                and r.conversation_id == conversation_id
+            ):
+                max_version = max(max_version, r.version)
+        return max_version
+
     # --- Temporal Queries ---
 
     async def query_world_state_as_of(
@@ -252,10 +270,12 @@ class MemoryStore(GraphStore):
         entity_type: EntityType,
         limit: int = 5,
         threshold: float = 0.85,
+        exclude_id: str | None = None,
     ) -> list[tuple[Entity, float]]:
         """Find similar entities using vector similarity (in-memory cosine).
 
         For testing only. Computes cosine similarity between embeddings.
+        Excludes entity with exclude_id if provided (to avoid self-matching).
         """
         if not embedding:
             return []
@@ -275,6 +295,8 @@ class MemoryStore(GraphStore):
         candidates: list[tuple[Entity, float]] = []
         for entity in self._entities.values():
             if entity.entity_type != entity_type or not entity.embedding:
+                continue
+            if exclude_id and entity.id == exclude_id:
                 continue
             score = cosine_similarity(embedding, entity.embedding)
             if score > threshold:

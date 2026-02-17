@@ -391,6 +391,29 @@ class Neo4jStore(GraphStore):
         result = await self._execute_write(query, **params)
         return result[0]["count"] if result else 0
 
+    async def get_max_relationship_version(
+        self,
+        source_id: str,
+        rel_type: RelationshipType,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> int:
+        query = """
+            MATCH (source:Entity {id: $source_id})-[r:RELATIONSHIP]->()
+            WHERE r.type = $type
+              AND r.tenant_id = $tenant_id
+              AND r.conversation_id = $conversation_id
+            RETURN COALESCE(MAX(r.version), 0) AS max_version
+        """
+        result = await self._execute_read(
+            query,
+            source_id=source_id,
+            type=rel_type.value,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        return result[0]["max_version"] if result else 0
+
     # --- Temporal Queries ---
 
     async def query_world_state_as_of(
@@ -519,18 +542,25 @@ class Neo4jStore(GraphStore):
         entity_type: EntityType,
         limit: int = 5,
         threshold: float = 0.85,
+        exclude_id: str | None = None,
     ) -> list[tuple[Entity, float]]:
         """Find similar entities using vector index (cosine similarity).
 
         Requires entity_embedding vector index to be created.
         Returns list of (entity, similarity_score) tuples.
+        Excludes entity with exclude_id if provided (to avoid self-matching).
         """
         try:
+            where_clauses = ["node.type = $type", "score > $threshold"]
+            if exclude_id:
+                where_clauses.append("node.id <> $exclude_id")
+            where_clause = " AND ".join(where_clauses)
+
             results = await self._execute_read(
-                """
+                f"""
                 CALL db.index.vector.queryNodes('entity_embedding', $limit, $embedding)
                 YIELD node, score
-                WHERE node.type = $type AND score > $threshold
+                WHERE {where_clause}
                 RETURN node, score
                 ORDER BY score DESC
                 """,
@@ -538,6 +568,7 @@ class Neo4jStore(GraphStore):
                 limit=limit,
                 type=entity_type.value,
                 threshold=threshold,
+                exclude_id=exclude_id,
             )
             return [(self._node_to_entity(r["node"]), r["score"]) for r in results]
         except Exception as e:

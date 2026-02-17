@@ -217,7 +217,8 @@ class ExtractionPipeline:
                         embedding=entity.embedding,
                         entity_type=entity_type,
                         limit=3,
-                        threshold=0.85,  # Graphiti uses 0.90, we use 0.85 for warnings
+                        threshold=0.85,
+                        exclude_id=entity.id,
                     )
 
                     if similar:

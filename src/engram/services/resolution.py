@@ -49,16 +49,23 @@ class ConflictResolver:
         policy = EXCLUSIVITY_POLICIES.get(new_rel.rel_type, ExclusivityPolicy())
 
         if policy.close_on_new:
+            max_version = await self._store.get_max_relationship_version(
+                source_id=new_rel.source_id,
+                rel_type=new_rel.rel_type,
+                tenant_id=new_rel.tenant_id,
+                conversation_id=new_rel.conversation_id,
+            )
+            new_rel.version = max_version + 1
+
             terminated = await self._store.terminate_relationship(
                 source_id=new_rel.source_id,
                 rel_type=new_rel.rel_type,
                 tenant_id=new_rel.tenant_id,
                 conversation_id=new_rel.conversation_id,
                 termination_time=new_rel.valid_from,
-                exclude_target_id=new_rel.target_id,  # Don't close if same target (reinforcement)
+                exclude_target_id=new_rel.target_id,
             )
             if terminated > 0:
-                new_rel.version = terminated + 1
                 logger.info(f"Terminated {terminated} conflicting {new_rel.rel_type} relationships")
 
         return await self._store.create_relationship(new_rel)
