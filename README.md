@@ -81,6 +81,41 @@ docker-compose exec api engram query "Kendra's current preferences"
 
 **That's it!** You now have a running temporal knowledge graph.
 
+### 5-Minute CLI Demo
+
+Prefer running everything locally? The CLI now speaks to the FastAPI server so you can ingest and query without writing curl commands.
+
+```bash
+# 1. Install deps
+uv sync
+
+# 2. Terminal A - start the API (uses your .env settings)
+uv run engram serve
+
+# 3. Terminal B - ingest the demo conversation
+uv run engram ingest examples/coaching-demo.json \
+  --conversation-id coaching-demo \
+  --group-id client-kendra
+
+# 4. Query what Engram learned
+uv run engram query "Kendra" \
+  --conversation-id coaching-demo \
+  --mode world_state
+```
+
+Sample output:
+
+```
+Ingestion Summary
++--------------+----------+----------------+----------+--------------+
+| Message ID   | Entities | Relationships  | Conflicts| Latency (ms) |
++--------------+----------+----------------+----------+--------------+
+| cli-...      | 3        | 2              | 1        | 342.5        |
++--------------+----------+----------------+----------+--------------+
+```
+
+Want it automated? `scripts/demo.sh` checks `http://localhost:8000/health`, ingests `examples/coaching-demo.json`, and runs the query above. Start `docker compose up` (or `uv run engram serve`) first, then run `./scripts/demo.sh`.
+
 ### Web UI
 
 Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive API explorer, or [http://localhost:7474](http://localhost:7474) for the Neo4j Browser (credentials: `neo4j`/`password`).
@@ -128,6 +163,21 @@ After 30 days: confidence drops from 1.0 → 0.86
 ```
 
 **Reinforcement**: When a relationship is re-mentioned, confidence increases.
+
+---
+
+## How Engram Compares
+
+| Capability | Engram | Mem0 | LightRAG | GraphRAG |
+|------------|--------|------|----------|----------|
+| Bitemporal validity/knowledge timelines | ✅ Built-in (`valid_*` + `recorded_*`) | ❌ snapshot only | ❌ snapshot only | ⚠️ record time only |
+| Conversation-native entity/relationship schema | ✅ People, preferences, decay-aware exclusivity | ⚠️ metadata only | ❌ chunk-based | ❌ document graph |
+| Confidence decay + reinforcement | ✅ configurable per type | ❌ | ❌ | ❌ |
+| Idempotent ingestion with dedup + retries | ✅ Redis/InMemory dedup service | ⚠️ manual | ⚠️ manual | ⚠️ manual |
+| Point-in-time + evolution queries | ✅ `/query/point-in-time`, `/query/evolution` | ❌ | ❌ | ⚠️ limited |
+| OSS license | ✅ MIT | ⚠️ custom | ✅ Apache-2.0 | ✅ MIT |
+
+⚠️ = partial/DIY implementations according to the latest public docs.
 
 ---
 

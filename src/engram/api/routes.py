@@ -15,21 +15,19 @@ Endpoints from ARCHITECTURE.md section 6.2:
 from __future__ import annotations
 
 import logging
-import time
-import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from engram.api.deps import get_dedup, get_pipeline, get_store
+from engram.api.deps import get_pipeline, get_store
 from engram.models.entity import EntityType
 from engram.models.message import IngestRequest, IngestResponse
 from engram.models.relationship import RelationshipType
 
 if TYPE_CHECKING:
-    from engram.api.deps import DedupDep, PipelineDep, StoreDep
+    from engram.api.deps import PipelineDep, StoreDep
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +167,7 @@ async def get_entity(
 async def get_relationships(
     entity_id: str,
     rel_type: str | None = Query(None),
+    tenant_id: str | None = Query(None),
     store: StoreDep = Depends(get_store),  # noqa: B008
 ) -> list[dict]:
     """Get active relationships for an entity.
@@ -193,6 +192,7 @@ async def get_relationships(
     relationships = await store.get_active_relationships(
         entity_id=entity_id,
         rel_type=parsed_type,
+        tenant_id=tenant_id,
     )
 
     # Convert to dict for JSON response

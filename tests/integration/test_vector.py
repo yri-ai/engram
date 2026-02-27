@@ -9,15 +9,15 @@ Tests the full pipeline:
 Requires: docker-compose up neo4j -d
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
 
 from engram.models.entity import Entity, EntityType
 from engram.models.message import IngestRequest
+from engram.services.dedup import InMemoryDedup
 from engram.services.embeddings import EmbeddingService
 from engram.services.extraction import ExtractionPipeline
-from engram.services.dedup import InMemoryDedup
 from engram.services.resolution import ConflictResolver
 from engram.storage.memory import MemoryStore
 from engram.storage.neo4j import Neo4jStore
@@ -394,5 +394,5 @@ class TestNeo4jVectorSearch:
         )
 
         # All results should be PERSON type
-        for entity, score in results:
+        for entity, _score in results:
             assert entity.entity_type == EntityType.PERSON

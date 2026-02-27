@@ -1,37 +1,24 @@
-"""Integration tests for FastAPI endpoints.
+"""Integration tests for FastAPI endpoints."""
 
-Tests all 9 API endpoints:
-1. POST /messages - Ingest message with extraction pipeline
-2. GET /entities - List entities with filters
-3. GET /entities/{id} - Get entity by ID
-4. GET /entities/{id}/relationships - Get entity relationships
-5. POST /entities/{id}/merge - Manual entity merge
-6. GET /query/point-in-time - Temporal query (world-state-as-of)
-7. GET /query/evolution - Evolution timeline
-8. GET /search - Entity search
-9. GET /health - Health check
-"""
+from __future__ import annotations
 
-from datetime import datetime, timezone
+import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient, ASGITransport
 
 from engram.main import create_app
+from engram.services.dedup import InMemoryDedup
+from engram.services.extraction import ExtractionPipeline
+from engram.services.resolution import ConflictResolver
+from engram.storage.memory import MemoryStore
 
 
 @pytest.fixture
 def client():
     """Create test client with in-memory store."""
-    import asyncio
-    from unittest.mock import AsyncMock
-    from engram.storage.memory import MemoryStore
-    from engram.services.dedup import InMemoryDedup
-    from engram.services.resolution import ConflictResolver
-    from engram.services.extraction import ExtractionPipeline
-
     app = create_app(use_memory_store=True)
 
     # Manually initialize app state for testing
@@ -92,7 +79,7 @@ class TestIngestEndpoint:
 
     def test_ingest_message_with_timestamp(self, client):
         """Ingest message with explicit timestamp."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         response = client.post(
             "/messages",
             json={
@@ -270,7 +257,7 @@ class TestPointInTimeQueryEndpoint:
 
     def test_point_in_time_query_basic(self, client):
         """Query world state at a point in time."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         response = client.get(
             "/query/point-in-time",
             params={
@@ -285,7 +272,7 @@ class TestPointInTimeQueryEndpoint:
 
     def test_point_in_time_query_with_rel_type(self, client):
         """Query with relationship type filter."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         response = client.get(
             "/query/point-in-time",
             params={
@@ -301,7 +288,7 @@ class TestPointInTimeQueryEndpoint:
 
     def test_point_in_time_query_with_mode(self, client):
         """Query with different temporal modes."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         for mode in ["world_state", "knowledge", "bitemporal"]:
             response = client.get(
                 "/query/point-in-time",

@@ -4,6 +4,18 @@ How to set up Engram, ingest documents, and query what the system learned over t
 
 ---
 
+## 0. Fast Demo
+
+Already have the stack running (either via `docker compose up` or `uv run engram serve`)? Run the scripted walkthrough:
+
+```bash
+./scripts/demo.sh          # assumes API at http://localhost:8000
+# or override API_URL, GROUP_ID, CONVERSATION_ID
+API_URL=http://localhost:8000 ./scripts/demo.sh examples/coaching-demo.json
+```
+
+The script checks `/health`, ingests `examples/coaching-demo.json`, and runs a query so you can see Engram's responses immediately.
+
 ## 1. Setup
 
 ### Prerequisites
@@ -61,6 +73,25 @@ uv run engram init
 # Start the API server
 uv run engram serve
 ```
+
+# CLI Walkthrough
+
+Once the API is running you can ingest/query entirely through the CLI:
+
+```bash
+uv sync
+uv run engram serve                # terminal A
+
+uv run engram ingest examples/coaching-demo.json \
+  --conversation-id coaching-demo \
+  --group-id client-kendra        # terminal B
+
+uv run engram query "Kendra" \
+  --conversation-id coaching-demo \
+  --mode world_state
+```
+
+The CLI prints an ingestion summary table and renders the active or point-in-time relationships returned from the FastAPI service.
 
 ### LLM Configuration
 
