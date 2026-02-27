@@ -422,6 +422,8 @@ Engram is in active development. Contributions are welcome!
 2. **Discussions**: Questions or ideas? [Start a discussion](https://github.com/yourusername/engram/discussions)
 3. **Pull Requests**: Want to contribute code? Fork, branch, and submit a PR
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding standards, and the full PR checklist.
+
 **Priority areas for contributions**:
 - PostgreSQL + AGE adapter
 - JavaScript/TypeScript SDK
