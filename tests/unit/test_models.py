@@ -2,6 +2,7 @@
 from datetime import UTC, datetime
 
 from engram.models.entity import Entity, EntityType
+from engram.models.fact import Fact, FactStatus
 from engram.models.message import IngestRequest
 from engram.models.relationship import Relationship, RelationshipType
 
@@ -80,3 +81,39 @@ def test_ingest_request_validation():
     )
     assert req.text == "Kendra loves Nike running shoes"
     assert req.tenant_id == "default"  # Default tenant for MVP
+
+
+def test_fact_build_id():
+    fid = Fact.build_id("t1", "msg1", 0)
+    assert fid == "t1:fact:msg1:0"
+
+
+def test_fact_defaults():
+    f = Fact(
+        id="t1:fact:msg1:0",
+        tenant_id="t1",
+        conversation_id="c1",
+        message_id="msg1",
+        entity_id="t1:c1:PERSON:alice",
+        fact_key="age",
+        fact_text="Alice is 32 years old",
+        confidence=0.9,
+    )
+    assert f.status == FactStatus.ACTIVE
+    assert f.supersedes_fact_id is None
+    assert f.valid_to is None
+
+
+def test_fact_supersession():
+    f = Fact(
+        id="t1:fact:msg2:0",
+        tenant_id="t1",
+        conversation_id="c1",
+        message_id="msg2",
+        entity_id="t1:c1:PERSON:alice",
+        fact_key="age",
+        fact_text="Alice is 33 now",
+        confidence=1.0,
+        supersedes_fact_id="t1:fact:msg1:0",
+    )
+    assert f.supersedes_fact_id == "t1:fact:msg1:0"

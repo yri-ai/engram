@@ -22,6 +22,9 @@ from engram.storage.base import GraphStore
 
 if TYPE_CHECKING:
     from engram.config import Settings
+    from engram.models.commitment import Commitment
+    from engram.models.fact import Fact
+    from engram.models.run import ExtractionRun
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,19 @@ class Neo4jStore(GraphStore):
             "CREATE INDEX entity_conversation IF NOT EXISTS FOR (e:Entity) ON (e.conversation_id)",
             "CREATE INDEX entity_group IF NOT EXISTS FOR (e:Entity) ON (e.group_id)",
             "CREATE INDEX entity_canonical_name IF NOT EXISTS FOR (e:Entity) ON (e.canonical_name)",
+            # ExtractionRun indexes
+            "CREATE INDEX run_id IF NOT EXISTS FOR (r:ExtractionRun) ON (r.id)",
+            "CREATE INDEX run_tenant IF NOT EXISTS FOR (r:ExtractionRun) ON (r.tenant_id)",
+            "CREATE INDEX run_message IF NOT EXISTS FOR (r:ExtractionRun) ON (r.message_id)",
+            # Commitment indexes
+            "CREATE INDEX commitment_id IF NOT EXISTS FOR (c:Commitment) ON (c.id)",
+            "CREATE INDEX commitment_entity IF NOT EXISTS FOR (c:Commitment) ON (c.entity_id)",
+            "CREATE INDEX commitment_tenant IF NOT EXISTS FOR (c:Commitment) ON (c.tenant_id)",
+            # Fact indexes
+            "CREATE INDEX fact_id IF NOT EXISTS FOR (f:Fact) ON (f.id)",
+            "CREATE INDEX fact_entity IF NOT EXISTS FOR (f:Fact) ON (f.entity_id)",
+            "CREATE INDEX fact_tenant IF NOT EXISTS FOR (f:Fact) ON (f.tenant_id)",
+            "CREATE INDEX fact_key IF NOT EXISTS FOR (f:Fact) ON (f.fact_key)",
         ]
 
         for idx in indexes:
@@ -292,6 +308,7 @@ class Neo4jStore(GraphStore):
                 conversation_id: $conversation_id,
                 group_id: $group_id,
                 message_id: $message_id,
+                extraction_run_id: $extraction_run_id,
                 type: $type,
                 valid_from: $valid_from,
                 valid_to: $valid_to,
@@ -299,6 +316,7 @@ class Neo4jStore(GraphStore):
                 recorded_to: $recorded_to,
                 confidence: $confidence,
                 evidence: $evidence,
+                structured_evidence: $structured_evidence,
                 version: $version,
                 supersedes: $supersedes,
                 metadata: $metadata
@@ -310,6 +328,7 @@ class Neo4jStore(GraphStore):
             conversation_id=rel.conversation_id,
             group_id=rel.group_id,
             message_id=rel.message_id,
+            extraction_run_id=rel.extraction_run_id,
             type=rel.rel_type.value,
             valid_from=rel.valid_from.isoformat(),
             valid_to=rel.valid_to.isoformat() if rel.valid_to else None,
@@ -317,6 +336,7 @@ class Neo4jStore(GraphStore):
             recorded_to=rel.recorded_to.isoformat() if rel.recorded_to else None,
             confidence=rel.confidence,
             evidence=rel.evidence,
+            structured_evidence=json.dumps([e.model_dump(mode="json") for e in rel.structured_evidence]),
             version=rel.version,
             supersedes=rel.supersedes,
             metadata=json.dumps(rel.metadata),
@@ -623,3 +643,250 @@ class Neo4jStore(GraphStore):
         except Exception as e:
             logger.warning("Vector search failed (index may not exist): %s", e)
             return []
+
+    # --- Run & Commitment Operations ---
+
+    async def save_run(self, run: ExtractionRun) -> ExtractionRun:
+        """Save or update extraction run metadata."""
+        await self._execute_write(
+            """
+            MERGE (r:ExtractionRun {id: $id})
+            SET r.tenant_id = $tenant_id,
+                r.conversation_id = $conversation_id,
+                r.message_id = $message_id,
+                r.prompt_id = $prompt_id,
+                r.prompt_sha256 = $prompt_sha256,
+                r.provider = $provider,
+                r.model = $model,
+                r.temperature = $temperature,
+                r.status = $status,
+                r.started_at = $started_at,
+                r.completed_at = $completed_at,
+                r.error_text = $error_text,
+                r.total_tokens = $total_tokens,
+                r.processing_time_ms = $processing_time_ms,
+                r.metadata = $metadata
+            RETURN r
+            """,
+            id=run.id,
+            tenant_id=run.tenant_id,
+            conversation_id=run.conversation_id,
+            message_id=run.message_id,
+            prompt_id=run.prompt_id,
+            prompt_sha256=run.prompt_sha256,
+            provider=run.provider,
+            model=run.model,
+            temperature=run.temperature,
+            status=run.status.value,
+            started_at=run.started_at.isoformat(),
+            completed_at=run.completed_at.isoformat() if run.completed_at else None,
+            error_text=run.error_text,
+            total_tokens=run.total_tokens,
+            processing_time_ms=run.processing_time_ms,
+            metadata=json.dumps(run.metadata),
+        )
+        return run
+
+    async def save_commitment(self, commitment: Commitment) -> Commitment:
+        """Save a commitment (intention/action)."""
+        await self._execute_write(
+            """
+            MERGE (c:Commitment {id: $id})
+            SET c.tenant_id = $tenant_id,
+                c.conversation_id = $conversation_id,
+                c.message_id = $message_id,
+                c.extraction_run_id = $extraction_run_id,
+                c.entity_id = $entity_id,
+                c.text = $text,
+                c.status = $status,
+                c.created_at = $created_at,
+                c.target_date = $target_date,
+                c.completed_at = $completed_at,
+                c.confidence = $confidence,
+                c.metadata = $metadata
+            RETURN c
+            """,
+            id=commitment.id,
+            tenant_id=commitment.tenant_id,
+            conversation_id=commitment.conversation_id,
+            message_id=commitment.message_id,
+            extraction_run_id=commitment.extraction_run_id,
+            entity_id=commitment.entity_id,
+            text=commitment.text,
+            status=commitment.status.value,
+            created_at=commitment.created_at.isoformat(),
+            target_date=commitment.target_date.isoformat() if commitment.target_date else None,
+            completed_at=commitment.completed_at.isoformat() if commitment.completed_at else None,
+            confidence=commitment.confidence,
+            metadata=json.dumps(commitment.metadata),
+        )
+        return commitment
+
+    async def get_commitments(
+        self,
+        tenant_id: str,
+        entity_id: str,
+    ) -> list[Commitment]:
+        """Get active commitments for an entity."""
+        from engram.models.commitment import Commitment, CommitmentStatus
+
+        results = await self._execute_read(
+            """
+            MATCH (c:Commitment)
+            WHERE c.tenant_id = $tenant_id
+              AND c.entity_id = $entity_id
+              AND c.status = 'active'
+            RETURN c
+            ORDER BY c.created_at DESC
+            """,
+            tenant_id=tenant_id,
+            entity_id=entity_id,
+        )
+
+        commitments = []
+        for r in results:
+            props = dict(r["c"])
+            metadata = props.get("metadata", "{}")
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+
+            commitments.append(
+                Commitment(
+                    id=props["id"],
+                    tenant_id=props["tenant_id"],
+                    conversation_id=props["conversation_id"],
+                    message_id=props["message_id"],
+                    extraction_run_id=props.get("extraction_run_id"),
+                    entity_id=props["entity_id"],
+                    text=props["text"],
+                    status=CommitmentStatus(props["status"]),
+                    created_at=datetime.fromisoformat(props["created_at"]),
+                    target_date=datetime.fromisoformat(props["target_date"])
+                    if props.get("target_date")
+                    else None,
+                    completed_at=datetime.fromisoformat(props["completed_at"])
+                    if props.get("completed_at")
+                    else None,
+                    confidence=props["confidence"],
+                    metadata=metadata,
+                )
+            )
+        return commitments
+
+    # --- Fact Operations ---
+
+    def _record_to_fact(self, props: dict) -> Fact:
+        """Convert Neo4j node properties to Fact model."""
+        from engram.models.fact import Fact, FactStatus
+
+        metadata = props.get("metadata", "{}")
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+
+        return Fact(
+            id=props["id"],
+            tenant_id=props["tenant_id"],
+            conversation_id=props["conversation_id"],
+            message_id=props["message_id"],
+            extraction_run_id=props.get("extraction_run_id"),
+            entity_id=props["entity_id"],
+            fact_key=props["fact_key"],
+            fact_text=props["fact_text"],
+            confidence=props["confidence"],
+            status=FactStatus(props["status"]),
+            supersedes_fact_id=props.get("supersedes_fact_id"),
+            valid_from=datetime.fromisoformat(props["valid_from"]),
+            valid_to=(
+                datetime.fromisoformat(props["valid_to"]) if props.get("valid_to") else None
+            ),
+            recorded_from=datetime.fromisoformat(props["recorded_from"]),
+            recorded_to=(
+                datetime.fromisoformat(props["recorded_to"]) if props.get("recorded_to") else None
+            ),
+            metadata=metadata,
+        )
+
+    async def save_fact(self, fact: Fact) -> Fact:
+        """Save a fact and create HAS_FACT relationship to its entity."""
+        await self._execute_write(
+            """
+            MERGE (f:Fact {id: $id})
+            SET f.tenant_id = $tenant_id,
+                f.conversation_id = $conversation_id,
+                f.message_id = $message_id,
+                f.extraction_run_id = $extraction_run_id,
+                f.entity_id = $entity_id,
+                f.fact_key = $fact_key,
+                f.fact_text = $fact_text,
+                f.confidence = $confidence,
+                f.status = $status,
+                f.supersedes_fact_id = $supersedes_fact_id,
+                f.valid_from = $valid_from,
+                f.valid_to = $valid_to,
+                f.recorded_from = $recorded_from,
+                f.recorded_to = $recorded_to,
+                f.metadata = $metadata
+            WITH f
+            MATCH (e:Entity {id: $entity_id})
+            MERGE (e)-[:HAS_FACT]->(f)
+            """,
+            id=fact.id,
+            tenant_id=fact.tenant_id,
+            conversation_id=fact.conversation_id,
+            message_id=fact.message_id,
+            extraction_run_id=fact.extraction_run_id,
+            entity_id=fact.entity_id,
+            fact_key=fact.fact_key,
+            fact_text=fact.fact_text,
+            confidence=fact.confidence,
+            status=fact.status.value,
+            supersedes_fact_id=fact.supersedes_fact_id,
+            valid_from=fact.valid_from.isoformat(),
+            valid_to=fact.valid_to.isoformat() if fact.valid_to else None,
+            recorded_from=fact.recorded_from.isoformat(),
+            recorded_to=fact.recorded_to.isoformat() if fact.recorded_to else None,
+            metadata=json.dumps(fact.metadata),
+        )
+        return fact
+
+    async def get_facts(
+        self,
+        tenant_id: str,
+        entity_id: str,
+        fact_key: str | None = None,
+        active_only: bool = True,
+    ) -> list[Fact]:
+        """Get facts for an entity, optionally filtered by key."""
+        query = """
+            MATCH (f:Fact)
+            WHERE f.tenant_id = $tenant_id
+              AND f.entity_id = $entity_id
+        """
+        params: dict[str, Any] = {"tenant_id": tenant_id, "entity_id": entity_id}
+
+        if fact_key:
+            query += " AND f.fact_key = $fact_key"
+            params["fact_key"] = fact_key
+
+        if active_only:
+            query += " AND f.status = 'active'"
+
+        query += " RETURN f ORDER BY f.valid_from DESC"
+        results = await self._execute_read(query, **params)
+        return [self._record_to_fact(dict(r["f"])) for r in results]
+
+    async def supersede_fact(self, old_fact_id: str, new_fact: Fact) -> Fact:
+        """Mark old fact as superseded and save the new one."""
+        # Mark old fact as superseded
+        await self._execute_write(
+            """
+            MATCH (f:Fact {id: $old_fact_id})
+            SET f.status = 'superseded',
+                f.valid_to = $valid_to
+            """,
+            old_fact_id=old_fact_id,
+            valid_to=new_fact.valid_from.isoformat(),
+        )
+        # Save new fact with supersession link
+        new_fact.supersedes_fact_id = old_fact_id
+        return await self.save_fact(new_fact)

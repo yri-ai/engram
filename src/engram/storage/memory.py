@@ -18,8 +18,11 @@ from engram.storage.base import GraphStore
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from engram.models.commitment import Commitment
     from engram.models.entity import EntityType
+    from engram.models.fact import Fact
     from engram.models.relationship import Relationship, RelationshipType
+    from engram.models.run import ExtractionRun
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,9 @@ class MemoryStore(GraphStore):
     def __init__(self) -> None:
         self._entities: dict[str, Entity] = {}
         self._relationships: list[Relationship] = []
+        self._runs: dict[str, ExtractionRun] = {}
+        self._commitments: dict[str, Commitment] = {}
+        self._facts: dict[str, Fact] = {}
 
     # --- Lifecycle ---
 
@@ -45,6 +51,9 @@ class MemoryStore(GraphStore):
         """Clear all data."""
         self._entities.clear()
         self._relationships.clear()
+        self._runs.clear()
+        self._commitments.clear()
+        self._facts.clear()
 
     async def health_check(self) -> bool:
         """Always healthy."""
@@ -338,6 +347,76 @@ class MemoryStore(GraphStore):
 
         candidates.sort(key=lambda x: x[1], reverse=True)
         return candidates[:limit]
+
+    # --- Run & Commitment Operations ---
+
+    async def save_run(self, run: ExtractionRun) -> ExtractionRun:
+        """Save or update extraction run metadata."""
+        self._runs[run.id] = run
+        return run
+
+    async def save_commitment(self, commitment: Commitment) -> Commitment:
+        """Save a commitment (intention/action)."""
+        self._commitments[commitment.id] = commitment
+        return commitment
+
+    async def get_commitments(
+        self,
+        tenant_id: str,
+        entity_id: str,
+    ) -> list[Commitment]:
+        """Get active commitments for an entity."""
+        from engram.models.commitment import CommitmentStatus
+
+        result = [
+            c
+            for c in self._commitments.values()
+            if c.tenant_id == tenant_id
+            and c.entity_id == entity_id
+            and c.status == CommitmentStatus.ACTIVE
+        ]
+        result.sort(key=lambda c: c.created_at, reverse=True)
+        return result
+
+    # --- Fact Operations ---
+
+    async def save_fact(self, fact: Fact) -> Fact:
+        """Save a fact (knowledge claim about an entity)."""
+        self._facts[fact.id] = fact
+        return fact
+
+    async def get_facts(
+        self,
+        tenant_id: str,
+        entity_id: str,
+        fact_key: str | None = None,
+        active_only: bool = True,
+    ) -> list[Fact]:
+        """Get facts for an entity, optionally filtered by key."""
+        from engram.models.fact import FactStatus
+
+        results = []
+        for f in self._facts.values():
+            if f.tenant_id != tenant_id or f.entity_id != entity_id:
+                continue
+            if fact_key and f.fact_key != fact_key:
+                continue
+            if active_only and f.status != FactStatus.ACTIVE:
+                continue
+            results.append(f)
+        return results
+
+    async def supersede_fact(self, old_fact_id: str, new_fact: Fact) -> Fact:
+        """Mark old fact as superseded and save the new one."""
+        from engram.models.fact import FactStatus
+
+        if old_fact_id in self._facts:
+            old = self._facts[old_fact_id]
+            old.status = FactStatus.SUPERSEDED
+            old.valid_to = new_fact.valid_from
+        new_fact.supersedes_fact_id = old_fact_id
+        self._facts[new_fact.id] = new_fact
+        return new_fact
 
     # --- Internal Helpers ---
 
