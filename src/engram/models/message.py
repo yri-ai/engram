@@ -1,6 +1,7 @@
 """Message models for ingestion."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +16,7 @@ class IngestRequest(BaseModel):
     tenant_id: str = "default"
     group_id: str | None = None
     message_id: str | None = None  # Auto-generated if not provided
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class IngestResponse(BaseModel):

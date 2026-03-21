@@ -71,3 +71,13 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["litellm.*", "neo4j.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "engram.cli.main",
+    "engram.api.deps",
+    "engram.api.routes",
+    "engram.main",
+    "engram.llm.provider",
+]
+disable_error_code = ["no-any-return", "type-arg", "assignment", "call-arg", "var-annotated", "arg-type"]

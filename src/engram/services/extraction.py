@@ -458,8 +458,8 @@ class ExtractionPipeline:
         created_facts: list[Fact] = []
         for i, item in enumerate(raw_items):
             # Resolve entity mention to Entity object
-            entity = self._find_entity_by_mention(item.get("entity_mention", ""), entities)
-            if not entity:
+            resolved = self._find_entity_by_mention(item.get("entity_mention", ""), entities)
+            if not resolved:
                 logger.warning(
                     "Could not resolve fact entity mention '%s' — skipping",
                     item.get("entity_mention"),
@@ -472,7 +472,7 @@ class ExtractionPipeline:
                 conversation_id=request.conversation_id,
                 message_id=message_id,
                 extraction_run_id=run_id,
-                entity_id=entity.id,
+                entity_id=resolved.id,
                 fact_key=item["fact_key"],
                 fact_text=item["fact_text"],
                 confidence=snap_confidence(item.get("confidence", 0.8)),

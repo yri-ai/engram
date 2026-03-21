@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -55,7 +56,7 @@ class Relationship(BaseModel):
     version: int = 1
     supersedes: str | None = None
 
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def is_active(self) -> bool:

@@ -119,14 +119,14 @@ class Neo4jStore(GraphStore):
 
     # --- Internal Helpers ---
 
-    async def _execute_read(self, query: str, **params: Any) -> list[dict]:
+    async def _execute_read(self, query: str, **params: Any) -> list[dict[str, Any]]:
         """Execute a read query and return list of record dicts."""
         assert self._driver is not None, "Neo4jStore not initialized"
         async with self._driver.session() as session:
             result = await session.run(query, params)
             return [dict(record) async for record in result]
 
-    async def _execute_write(self, query: str, **params: Any) -> list[dict]:
+    async def _execute_write(self, query: str, **params: Any) -> list[dict[str, Any]]:
         """Execute a write query and return list of record dicts."""
         assert self._driver is not None, "Neo4jStore not initialized"
         async with self._driver.session() as session:
@@ -787,7 +787,7 @@ class Neo4jStore(GraphStore):
 
     # --- Fact Operations ---
 
-    def _record_to_fact(self, props: dict) -> Fact:
+    def _record_to_fact(self, props: dict[str, Any]) -> Fact:
         """Convert Neo4j node properties to Fact model."""
         from engram.models.fact import Fact, FactStatus
 
