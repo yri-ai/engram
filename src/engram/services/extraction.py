@@ -156,6 +156,23 @@ class ExtractionPipeline:
             # Step 5: Commitment Extraction
             await self._extract_commitments(request, entities, message_id, run.id)
 
+            # Step 6: Build snapshot of what changed
+            from engram.services.snapshot import SnapshotService
+            snapshot_service = SnapshotService(self._store)
+            snapshot = await snapshot_service.build_snapshot(
+                tenant_id=request.tenant_id,
+                conversation_id=request.conversation_id,
+                message_id=message_id,
+                run_id=run.id,
+                new_entities=entities,
+                new_relationships=relationships,
+                new_facts=facts,
+            )
+            logger.info(
+                "Extraction snapshot: %d entities, %d deltas for message %s",
+                snapshot.entity_count, len(snapshot.deltas), message_id,
+            )
+
             run.status = RunStatus.COMPLETED
             run.completed_at = datetime.now(UTC)
         except Exception as e:
