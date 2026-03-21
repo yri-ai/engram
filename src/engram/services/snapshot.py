@@ -36,6 +36,16 @@ class SnapshotService:
             tenant_id=tenant_id, conversation_id=conversation_id, limit=500,
         )
 
+        # Count actual relationships and facts across all entities
+        rel_ids: set[tuple[str, str, str]] = set()
+        total_fact_count = 0
+        for e in entities:
+            rels = await self._store.get_active_relationships(e.id)
+            for r in rels:
+                rel_ids.add((r.source_id, r.target_id, r.rel_type))
+            facts = await self._store.get_facts(tenant_id, e.id)
+            total_fact_count += len(facts)
+
         # Build deltas from what was just extracted
         deltas: list[SnapshotDelta] = []
         if new_entities:
@@ -71,8 +81,8 @@ class SnapshotService:
             message_id=message_id,
             extraction_run_id=run_id,
             entity_count=len(entities),
-            relationship_count=0,  # Could count via store query
-            fact_count=len(new_facts) if new_facts else 0,
+            relationship_count=len(rel_ids),
+            fact_count=total_fact_count,
             entities=[e.canonical_name for e in entities],
             deltas=deltas,
         )
