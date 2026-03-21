@@ -17,8 +17,8 @@ jobs:
           enable-cache: true
       - name: Lint with ruff
         run: |
-          uv run ruff check src/ tests/
-          uv run ruff format --check src/ tests/
+          uv run --extra dev ruff check src/ tests/
+          uv run --extra dev ruff format --check src/ tests/
 
   typecheck:
     runs-on: ubuntu-latest
@@ -28,7 +28,7 @@ jobs:
         with:
           enable-cache: true
       - name: Type check with mypy
-        run: uv run mypy src/engram/
+        run: uv run --extra dev mypy src/engram/
 
   test:
     runs-on: ubuntu-latest
@@ -63,7 +63,7 @@ jobs:
           enable-cache: true
 
       - name: Run unit tests
-        run: uv run pytest tests/unit/ -v --cov=engram --cov-report=xml
+        run: uv run --extra dev pytest tests/unit/ -v --cov=engram --cov-report=xml
 
       - name: Run integration tests
         env:
@@ -73,10 +73,10 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           OPENAI_API_KEY: sk-test-fake  # Not used in integration tests
-        run: uv run pytest tests/integration/ -v -m integration
+        run: uv run --extra dev pytest tests/integration/ -v -m integration
 
       - name: Run E2E tests
-        run: uv run pytest tests/e2e/ -v
+        run: uv run --extra dev pytest tests/e2e/ -v
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
