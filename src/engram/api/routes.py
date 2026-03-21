@@ -289,7 +289,9 @@ async def point_in_time_query(
                     "recorded_from": r.recorded_from.isoformat(),
                     "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
                     "version": r.version,
-                    "structured_evidence": [e.model_dump(mode="json") for e in r.structured_evidence],
+                    "structured_evidence": [
+                        e.model_dump(mode="json") for e in r.structured_evidence
+                    ],
                 }
                 for r in world_state
             ],
@@ -305,7 +307,9 @@ async def point_in_time_query(
                     "recorded_from": r.recorded_from.isoformat(),
                     "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
                     "version": r.version,
-                    "structured_evidence": [e.model_dump(mode="json") for e in r.structured_evidence],
+                    "structured_evidence": [
+                        e.model_dump(mode="json") for e in r.structured_evidence
+                    ],
                 }
                 for r in knowledge
             ],

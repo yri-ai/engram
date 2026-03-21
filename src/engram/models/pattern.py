@@ -32,5 +32,6 @@ class Pattern(BaseModel):
     def build_id(tenant_id: str, entity_id: str, category: str, text_slug: str) -> str:
         """Build deterministic pattern ID."""
         import hashlib
+
         h = hashlib.md5(text_slug.encode()).hexdigest()[:8]
         return f"{tenant_id}:pattern:{entity_id}:{category}:{h}"

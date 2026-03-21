@@ -173,8 +173,7 @@ class Neo4jStore(GraphStore):
         if isinstance(structured_evidence_raw, str):
             structured_evidence_raw = json.loads(structured_evidence_raw)
         structured_evidence = [
-            Evidence(**e) if isinstance(e, dict) else e
-            for e in structured_evidence_raw
+            Evidence(**e) if isinstance(e, dict) else e for e in structured_evidence_raw
         ]
 
         return Relationship(
@@ -347,7 +346,9 @@ class Neo4jStore(GraphStore):
             recorded_to=rel.recorded_to.isoformat() if rel.recorded_to else None,
             confidence=rel.confidence,
             evidence=rel.evidence,
-            structured_evidence=json.dumps([e.model_dump(mode="json") for e in rel.structured_evidence]),
+            structured_evidence=json.dumps(
+                [e.model_dump(mode="json") for e in rel.structured_evidence]
+            ),
             version=rel.version,
             supersedes=rel.supersedes,
             metadata=json.dumps(rel.metadata),
@@ -807,9 +808,7 @@ class Neo4jStore(GraphStore):
             status=FactStatus(props["status"]),
             supersedes_fact_id=props.get("supersedes_fact_id"),
             valid_from=datetime.fromisoformat(props["valid_from"]),
-            valid_to=(
-                datetime.fromisoformat(props["valid_to"]) if props.get("valid_to") else None
-            ),
+            valid_to=(datetime.fromisoformat(props["valid_to"]) if props.get("valid_to") else None),
             recorded_from=datetime.fromisoformat(props["recorded_from"]),
             recorded_to=(
                 datetime.fromisoformat(props["recorded_to"]) if props.get("recorded_to") else None

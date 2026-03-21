@@ -107,7 +107,12 @@ async def test_pipeline_extracts_entities_and_relationships(pipeline):
             # Stage 4: Commitment extraction
             {"commitments": []},
             # Stage 5: Conversation summary
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -138,11 +143,20 @@ async def test_pipeline_creates_extraction_run(pipeline):
     """Pipeline should create and persist an ExtractionRun."""
     pipeline._llm.complete_json = AsyncMock(
         side_effect=[
-            {"entities": [{"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0}]},
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0}
+                ]
+            },
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -166,7 +180,11 @@ async def test_pipeline_extracts_commitments(pipeline):
     pipeline._llm.complete_json = AsyncMock(
         side_effect=[
             # Entities
-            {"entities": [{"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0}]},
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0}
+                ]
+            },
             # Relationships
             {"relationships": []},
             # Facts
@@ -183,7 +201,12 @@ async def test_pipeline_extracts_commitments(pipeline):
                 ]
             },
             # Summary
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -220,7 +243,12 @@ async def test_pipeline_deduplicates_messages(pipeline):
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -274,7 +302,12 @@ async def test_correction_detection(pipeline):
             },
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
             # Message 2: Actually Adidas
             {
                 "entities": [
@@ -306,7 +339,12 @@ async def test_correction_detection(pipeline):
             },
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "correction", "key_shift": "switched to Adidas", "closing_state": "prefers Adidas", "breakthrough": True},
+            {
+                "opening_state": "correction",
+                "key_shift": "switched to Adidas",
+                "closing_state": "prefers Adidas",
+                "breakthrough": True,
+            },
         ]
     )
 
@@ -380,7 +418,12 @@ async def test_unknown_relationship_type_falls_back_to_relates_to(pipeline):
             },
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -421,7 +464,12 @@ async def test_group_id_used_for_entity_ids(pipeline):
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -458,7 +506,12 @@ async def test_group_id_defaults_to_conversation_id(pipeline):
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -513,7 +566,12 @@ async def test_confidence_is_snapped_in_pipeline(pipeline):
             },
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -539,17 +597,33 @@ async def test_fact_extraction(pipeline):
     pipeline._llm.complete_json = AsyncMock(
         side_effect=[
             # Stage 1: Entity extraction
-            {"entities": [{"name": "Alice", "canonical": "alice", "type": "PERSON", "confidence": 1.0}]},
+            {
+                "entities": [
+                    {"name": "Alice", "canonical": "alice", "type": "PERSON", "confidence": 1.0}
+                ]
+            },
             # Stage 2: Relationship inference
             {"relationships": []},
             # Stage 3.5: Fact extraction
-            {"facts": [
-                {"entity_mention": "Alice", "fact_key": "age", "fact_text": "Alice is 32 years old", "confidence": 0.9},
-            ]},
+            {
+                "facts": [
+                    {
+                        "entity_mention": "Alice",
+                        "fact_key": "age",
+                        "fact_text": "Alice is 32 years old",
+                        "confidence": 0.9,
+                    },
+                ]
+            },
             # Stage 4: Commitment extraction
             {"commitments": []},
             # Stage 5: Conversation summary
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 
@@ -623,7 +697,12 @@ async def test_unresolvable_mention_skipped(pipeline):
             },
             {"facts": []},
             {"commitments": []},
-            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
+            {
+                "opening_state": "context",
+                "key_shift": None,
+                "closing_state": "state",
+                "breakthrough": False,
+            },
         ]
     )
 

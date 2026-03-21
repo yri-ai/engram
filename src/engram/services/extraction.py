@@ -90,6 +90,7 @@ class ExtractionPipeline:
         self._config_service = config_service or ConfigService()
 
         from engram.services.snapshot import SnapshotService
+
         self._snapshot_service = SnapshotService(store)
 
     async def process_message(self, request: IngestRequest) -> IngestResponse:
@@ -164,7 +165,9 @@ class ExtractionPipeline:
             await self._extract_commitments(request, entities, message_id, run.id)
 
             # Step 6: Conversation summary
-            summary = await self._generate_summary(request, entities, relationships, facts, message_id, run.id)
+            summary = await self._generate_summary(
+                request, entities, relationships, facts, message_id, run.id
+            )
             if summary:
                 logger.info("Summary: %s -> %s", summary.opening_state, summary.closing_state)
 
@@ -180,7 +183,9 @@ class ExtractionPipeline:
             )
             logger.info(
                 "Extraction snapshot: %d entities, %d deltas for message %s",
-                snapshot.entity_count, len(snapshot.deltas), message_id,
+                snapshot.entity_count,
+                len(snapshot.deltas),
+                message_id,
             )
 
             run.status = RunStatus.COMPLETED
@@ -551,16 +556,22 @@ class ExtractionPipeline:
         for e in recent_entities:
             rels = await self._store.get_active_relationships(e.id)
             for r in rels:
-                rel_type_str = r.rel_type.value if isinstance(r.rel_type, RelationshipType) else str(r.rel_type)
+                rel_type_str = (
+                    r.rel_type.value
+                    if isinstance(r.rel_type, RelationshipType)
+                    else str(r.rel_type)
+                )
                 key = (r.source_id, r.target_id, rel_type_str)
                 if key not in seen:
                     seen.add(key)
-                    rel_context.append({
-                        "source": r.source_id.split(":")[-1],
-                        "target": r.target_id.split(":")[-1],
-                        "type": rel_type_str,
-                        "evidence": r.evidence[:100] if r.evidence else "",
-                    })
+                    rel_context.append(
+                        {
+                            "source": r.source_id.split(":")[-1],
+                            "target": r.target_id.split(":")[-1],
+                            "type": rel_type_str,
+                            "evidence": r.evidence[:100] if r.evidence else "",
+                        }
+                    )
 
         return {
             "entities": entity_context,
@@ -577,7 +588,11 @@ class ExtractionPipeline:
         for entity in entities:
             rels = await self._store.get_active_relationships(entity.id)
             for r in rels:
-                rel_type_str = r.rel_type.value if isinstance(r.rel_type, RelationshipType) else str(r.rel_type)
+                rel_type_str = (
+                    r.rel_type.value
+                    if isinstance(r.rel_type, RelationshipType)
+                    else str(r.rel_type)
+                )
                 key = (r.source_id, r.target_id, rel_type_str)
                 if key not in seen:
                     seen.add(key)
@@ -659,10 +674,18 @@ class ExtractionPipeline:
         """Generate a narrative summary of the conversation message."""
         entity_dicts = [{"name": e.canonical_name, "type": e.entity_type.value} for e in entities]
         fact_dicts = [{"key": f.fact_key, "text": f.fact_text} for f in facts] if facts else None
-        rel_dicts = [
-            {"source": r.source_id.split(":")[-1], "type": r.rel_type.value, "target": r.target_id.split(":")[-1]}
-            for r in relationships
-        ] if relationships else None
+        rel_dicts = (
+            [
+                {
+                    "source": r.source_id.split(":")[-1],
+                    "type": r.rel_type.value,
+                    "target": r.target_id.split(":")[-1],
+                }
+                for r in relationships
+            ]
+            if relationships
+            else None
+        )
 
         prompt = self._config_service.render_prompt(
             "conversation_summary.jinja2",

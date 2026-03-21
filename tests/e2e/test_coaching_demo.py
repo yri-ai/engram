@@ -22,199 +22,183 @@ from engram.storage.memory import MemoryStore
 # ── Fixtures ─────────────────────────────────────────────────────────────
 
 
+_EMPTY_TAIL = [
+    {"facts": []},
+    {"commitments": []},
+    {"opening_state": "", "key_shift": None, "closing_state": "", "breakthrough": False},
+]
+"""Stages 4-6 (fact extraction, commitment extraction, summary) return empty for e2e mocks."""
+
+
+def _msg(entities: dict, relationships: dict) -> list[dict]:
+    """Build a full 5-response sequence for one message (entity, rel, fact, commitment, summary)."""
+    return [entities, relationships, *_EMPTY_TAIL]
+
+
 def _build_mock_llm_responses() -> list[dict]:
     """Build deterministic LLM responses for each coaching-demo message.
 
-    coaching-demo.json has 6 messages. We mock entity extraction + relationship
-    inference for each (2 LLM calls per message = 12 total responses).
+    coaching-demo.json has 6 messages. Each message triggers 5 LLM calls:
+    entity extraction, relationship inference, fact extraction, commitment
+    extraction, and conversation summary (30 total responses).
     """
     return [
         # ── Message 1: "Hi, I'm Kendra. I've been training for the Boston Marathon."
-        # Entity extraction
-        {
-            "entities": [
-                {
-                    "name": "Kendra",
-                    "canonical": "kendra",
-                    "type": "PERSON",
-                    "confidence": 1.0,
-                },
-                {
-                    "name": "Boston Marathon",
-                    "canonical": "boston-marathon",
-                    "type": "EVENT",
-                    "confidence": 1.0,
-                },
-            ]
-        },
-        # Relationship inference
-        {
-            "relationships": [
-                {
-                    "source_mention": "Kendra",
-                    "target_mention": "Boston Marathon",
-                    "type": "has_goal",
-                    "confidence": 0.9,
-                    "evidence": "training for the Boston Marathon",
-                    "temporal_marker": "now",
-                },
-            ]
-        },
+        *_msg(
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0},
+                    {
+                        "name": "Boston Marathon",
+                        "canonical": "boston-marathon",
+                        "type": "EVENT",
+                        "confidence": 1.0,
+                    },
+                ]
+            },
+            {
+                "relationships": [
+                    {
+                        "source_mention": "Kendra",
+                        "target_mention": "Boston Marathon",
+                        "type": "has_goal",
+                        "confidence": 0.9,
+                        "evidence": "training for the Boston Marathon",
+                        "temporal_marker": "now",
+                    },
+                ]
+            },
+        ),
         # ── Message 2: "I love Nike running shoes, they're the best for long distance."
-        # Entity extraction
-        {
-            "entities": [
-                {
-                    "name": "Kendra",
-                    "canonical": "kendra",
-                    "type": "PERSON",
-                    "confidence": 1.0,
-                },
-                {
-                    "name": "Nike running shoes",
-                    "canonical": "nike-running-shoes",
-                    "type": "PREFERENCE",
-                    "confidence": 1.0,
-                },
-            ]
-        },
-        # Relationship inference
-        {
-            "relationships": [
-                {
-                    "source_mention": "Kendra",
-                    "target_mention": "Nike running shoes",
-                    "type": "prefers",
-                    "confidence": 0.95,
-                    "evidence": "loves Nike running shoes, best for long distance",
-                    "temporal_marker": "now",
-                },
-            ]
-        },
+        *_msg(
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0},
+                    {
+                        "name": "Nike running shoes",
+                        "canonical": "nike-running-shoes",
+                        "type": "PREFERENCE",
+                        "confidence": 1.0,
+                    },
+                ]
+            },
+            {
+                "relationships": [
+                    {
+                        "source_mention": "Kendra",
+                        "target_mention": "Nike running shoes",
+                        "type": "prefers",
+                        "confidence": 0.95,
+                        "evidence": "loves Nike running shoes, best for long distance",
+                        "temporal_marker": "now",
+                    },
+                ]
+            },
+        ),
         # ── Message 3: "My goal is to finish the Boston Marathon under 4 hours."
-        # Entity extraction
-        {
-            "entities": [
-                {
-                    "name": "Kendra",
-                    "canonical": "kendra",
-                    "type": "PERSON",
-                    "confidence": 1.0,
-                },
-                {
-                    "name": "Boston Marathon",
-                    "canonical": "boston-marathon",
-                    "type": "EVENT",
-                    "confidence": 1.0,
-                },
-            ]
-        },
-        # Relationship inference
-        {
-            "relationships": [
-                {
-                    "source_mention": "Kendra",
-                    "target_mention": "Boston Marathon",
-                    "type": "has_goal",
-                    "confidence": 1.0,
-                    "evidence": "goal to finish under 4 hours",
-                    "temporal_marker": "now",
-                },
-            ]
-        },
+        *_msg(
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0},
+                    {
+                        "name": "Boston Marathon",
+                        "canonical": "boston-marathon",
+                        "type": "EVENT",
+                        "confidence": 1.0,
+                    },
+                ]
+            },
+            {
+                "relationships": [
+                    {
+                        "source_mention": "Kendra",
+                        "target_mention": "Boston Marathon",
+                        "type": "has_goal",
+                        "confidence": 1.0,
+                        "evidence": "goal to finish under 4 hours",
+                        "temporal_marker": "now",
+                    },
+                ]
+            },
+        ),
         # ── Message 4: "I've been working with Coach Sarah on my training plan."
-        # Entity extraction
-        {
-            "entities": [
-                {
-                    "name": "Kendra",
-                    "canonical": "kendra",
-                    "type": "PERSON",
-                    "confidence": 1.0,
-                },
-                {
-                    "name": "Coach Sarah",
-                    "canonical": "coach-sarah",
-                    "type": "PERSON",
-                    "confidence": 1.0,
-                },
-            ]
-        },
-        # Relationship inference
-        {
-            "relationships": [
-                {
-                    "source_mention": "Kendra",
-                    "target_mention": "Coach Sarah",
-                    "type": "knows",
-                    "confidence": 0.9,
-                    "evidence": "working with Coach Sarah on training plan",
-                    "temporal_marker": "now",
-                },
-            ]
-        },
+        *_msg(
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0},
+                    {
+                        "name": "Coach Sarah",
+                        "canonical": "coach-sarah",
+                        "type": "PERSON",
+                        "confidence": 1.0,
+                    },
+                ]
+            },
+            {
+                "relationships": [
+                    {
+                        "source_mention": "Kendra",
+                        "target_mention": "Coach Sarah",
+                        "type": "knows",
+                        "confidence": 0.9,
+                        "evidence": "working with Coach Sarah on training plan",
+                        "temporal_marker": "now",
+                    },
+                ]
+            },
+        ),
         # ── Message 5: "Actually, I switched to Adidas. The arch support is much better."
-        # Entity extraction
-        {
-            "entities": [
-                {
-                    "name": "Kendra",
-                    "canonical": "kendra",
-                    "type": "PERSON",
-                    "confidence": 1.0,
-                },
-                {
-                    "name": "Adidas",
-                    "canonical": "adidas",
-                    "type": "PREFERENCE",
-                    "confidence": 1.0,
-                },
-            ]
-        },
-        # Relationship inference (correction: switched from Nike to Adidas)
-        {
-            "relationships": [
-                {
-                    "source_mention": "Kendra",
-                    "target_mention": "Adidas",
-                    "type": "prefers",
-                    "confidence": 0.9,
-                    "evidence": "switched to Adidas, better arch support",
-                    "temporal_marker": "now",
-                },
-            ]
-        },
+        *_msg(
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0},
+                    {
+                        "name": "Adidas",
+                        "canonical": "adidas",
+                        "type": "PREFERENCE",
+                        "confidence": 1.0,
+                    },
+                ]
+            },
+            {
+                "relationships": [
+                    {
+                        "source_mention": "Kendra",
+                        "target_mention": "Adidas",
+                        "type": "prefers",
+                        "confidence": 0.9,
+                        "evidence": "switched to Adidas, better arch support",
+                        "temporal_marker": "now",
+                    },
+                ]
+            },
+        ),
         # ── Message 6: "I completed the Boston Marathon! Finished in 3:45:00."
-        # Entity extraction
-        {
-            "entities": [
-                {
-                    "name": "Kendra",
-                    "canonical": "kendra",
-                    "type": "PERSON",
-                    "confidence": 1.0,
-                },
-                {
-                    "name": "Boston Marathon",
-                    "canonical": "boston-marathon",
-                    "type": "EVENT",
-                    "confidence": 1.0,
-                },
-            ]
-        },
-        # Relationship inference
-        {
-            "relationships": [
-                {
-                    "source_mention": "Kendra",
-                    "target_mention": "Boston Marathon",
-                    "type": "discussed",
-                    "confidence": 1.0,
-                    "evidence": "completed the Boston Marathon in 3:45:00",
-                    "temporal_marker": "now",
-                },
-            ]
-        },
+        *_msg(
+            {
+                "entities": [
+                    {"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0},
+                    {
+                        "name": "Boston Marathon",
+                        "canonical": "boston-marathon",
+                        "type": "EVENT",
+                        "confidence": 1.0,
+                    },
+                ]
+            },
+            {
+                "relationships": [
+                    {
+                        "source_mention": "Kendra",
+                        "target_mention": "Boston Marathon",
+                        "type": "discussed",
+                        "confidence": 1.0,
+                        "evidence": "completed the Boston Marathon in 3:45:00",
+                        "temporal_marker": "now",
+                    },
+                ]
+            },
+        ),
     ]
 
 
@@ -673,96 +657,96 @@ class TestFullCoachingScenario:
         llm = AsyncMock()
         llm.complete_json = AsyncMock(
             side_effect=[
-                # Message 1 entities
-                {
-                    "entities": [
-                        {
-                            "name": "Kendra",
-                            "canonical": "kendra",
-                            "type": "PERSON",
-                            "confidence": 1.0,
-                        },
-                        {
-                            "name": "Boston Marathon",
-                            "canonical": "boston-marathon",
-                            "type": "EVENT",
-                            "confidence": 1.0,
-                        },
-                    ]
-                },
-                # Message 1 relationships
-                {
-                    "relationships": [
-                        {
-                            "source_mention": "Kendra",
-                            "target_mention": "Boston Marathon",
-                            "type": "has_goal",
-                            "confidence": 0.9,
-                            "evidence": "training for",
-                            "temporal_marker": "now",
-                        },
-                    ]
-                },
-                # Message 2 entities
-                {
-                    "entities": [
-                        {
-                            "name": "Kendra",
-                            "canonical": "kendra",
-                            "type": "PERSON",
-                            "confidence": 1.0,
-                        },
-                        {
-                            "name": "Nike running shoes",
-                            "canonical": "nike-running-shoes",
-                            "type": "PREFERENCE",
-                            "confidence": 1.0,
-                        },
-                    ]
-                },
-                # Message 2 relationships
-                {
-                    "relationships": [
-                        {
-                            "source_mention": "Kendra",
-                            "target_mention": "Nike running shoes",
-                            "type": "prefers",
-                            "confidence": 0.95,
-                            "evidence": "loves Nike",
-                            "temporal_marker": "now",
-                        },
-                    ]
-                },
-                # Message 5 entities
-                {
-                    "entities": [
-                        {
-                            "name": "Kendra",
-                            "canonical": "kendra",
-                            "type": "PERSON",
-                            "confidence": 1.0,
-                        },
-                        {
-                            "name": "Adidas",
-                            "canonical": "adidas",
-                            "type": "PREFERENCE",
-                            "confidence": 1.0,
-                        },
-                    ]
-                },
-                # Message 5 relationships
-                {
-                    "relationships": [
-                        {
-                            "source_mention": "Kendra",
-                            "target_mention": "Adidas",
-                            "type": "prefers",
-                            "confidence": 0.9,
-                            "evidence": "switched to Adidas",
-                            "temporal_marker": "now",
-                        },
-                    ]
-                },
+                *_msg(
+                    {
+                        "entities": [
+                            {
+                                "name": "Kendra",
+                                "canonical": "kendra",
+                                "type": "PERSON",
+                                "confidence": 1.0,
+                            },
+                            {
+                                "name": "Boston Marathon",
+                                "canonical": "boston-marathon",
+                                "type": "EVENT",
+                                "confidence": 1.0,
+                            },
+                        ]
+                    },
+                    {
+                        "relationships": [
+                            {
+                                "source_mention": "Kendra",
+                                "target_mention": "Boston Marathon",
+                                "type": "has_goal",
+                                "confidence": 0.9,
+                                "evidence": "training for",
+                                "temporal_marker": "now",
+                            },
+                        ]
+                    },
+                ),
+                *_msg(
+                    {
+                        "entities": [
+                            {
+                                "name": "Kendra",
+                                "canonical": "kendra",
+                                "type": "PERSON",
+                                "confidence": 1.0,
+                            },
+                            {
+                                "name": "Nike running shoes",
+                                "canonical": "nike-running-shoes",
+                                "type": "PREFERENCE",
+                                "confidence": 1.0,
+                            },
+                        ]
+                    },
+                    {
+                        "relationships": [
+                            {
+                                "source_mention": "Kendra",
+                                "target_mention": "Nike running shoes",
+                                "type": "prefers",
+                                "confidence": 0.95,
+                                "evidence": "loves Nike",
+                                "temporal_marker": "now",
+                            },
+                        ]
+                    },
+                ),
+                *_msg(
+                    {
+                        "entities": [
+                            {
+                                "name": "Kendra",
+                                "canonical": "kendra",
+                                "type": "PERSON",
+                                "confidence": 1.0,
+                            },
+                            {
+                                "name": "Adidas",
+                                "canonical": "adidas",
+                                "type": "PREFERENCE",
+                                "confidence": 1.0,
+                            },
+                        ]
+                    },
+                    {
+                        "relationships": [
+                            {
+                                "source_mention": "Kendra",
+                                "target_mention": "Adidas",
+                                "type": "prefers",
+                                "confidence": 0.9,
+                                "evidence": "switched to Adidas",
+                                "temporal_marker": "now",
+                            },
+                        ]
+                    },
+                ),
             ]
         )
 

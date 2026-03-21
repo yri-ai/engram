@@ -33,7 +33,9 @@ class SnapshotService:
         """Build a snapshot of current conversation state with deltas."""
         # Get current state
         entities = await self._store.list_entities(
-            tenant_id=tenant_id, conversation_id=conversation_id, limit=500,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            limit=500,
         )
 
         # Count actual relationships and facts across all entities
@@ -50,29 +52,35 @@ class SnapshotService:
         deltas: list[SnapshotDelta] = []
         if new_entities:
             for e in new_entities:
-                deltas.append(SnapshotDelta(
-                    change_type=ChangeType.ADDED,
-                    artifact_type="entity",
-                    artifact_id=e.id,
-                    summary=f"New entity: {e.canonical_name} ({e.entity_type.value})",
-                ))
+                deltas.append(
+                    SnapshotDelta(
+                        change_type=ChangeType.ADDED,
+                        artifact_type="entity",
+                        artifact_id=e.id,
+                        summary=f"New entity: {e.canonical_name} ({e.entity_type.value})",
+                    )
+                )
         if new_relationships:
             for r in new_relationships:
-                deltas.append(SnapshotDelta(
-                    change_type=ChangeType.ADDED,
-                    artifact_type="relationship",
-                    artifact_id=f"{r.source_id}->{r.target_id}",
-                    summary=f"{r.source_id.split(':')[-1]} {r.rel_type.value} {r.target_id.split(':')[-1]}",
-                ))
+                deltas.append(
+                    SnapshotDelta(
+                        change_type=ChangeType.ADDED,
+                        artifact_type="relationship",
+                        artifact_id=f"{r.source_id}->{r.target_id}",
+                        summary=f"{r.source_id.split(':')[-1]} {r.rel_type.value} {r.target_id.split(':')[-1]}",
+                    )
+                )
         if new_facts:
             for f in new_facts:
                 change = ChangeType.SUPERSEDED if f.supersedes_fact_id else ChangeType.ADDED
-                deltas.append(SnapshotDelta(
-                    change_type=change,
-                    artifact_type="fact",
-                    artifact_id=f.id,
-                    summary=f"{f.fact_key}: {f.fact_text}",
-                ))
+                deltas.append(
+                    SnapshotDelta(
+                        change_type=change,
+                        artifact_type="fact",
+                        artifact_id=f.id,
+                        summary=f"{f.fact_key}: {f.fact_text}",
+                    )
+                )
 
         return ConversationSnapshot(
             id=f"snap-{uuid.uuid4()}",

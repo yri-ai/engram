@@ -12,7 +12,7 @@ import pytest
 
 from engram.models.commitment import Commitment, CommitmentStatus
 from engram.models.entity import Entity, EntityType
-from engram.models.relationship import Evidence, Relationship, RelationshipType
+from engram.models.relationship import Relationship, RelationshipType
 from engram.models.run import ExtractionRun, RunStatus
 
 
