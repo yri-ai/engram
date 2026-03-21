@@ -1,4 +1,4 @@
-"""6-stage extraction pipeline: Entity -> Relationship -> Conflict Resolution -> Fact -> Commitment -> Summary.
+"""7-stage extraction pipeline: Entity -> Relationship -> Conflict Resolution -> Fact -> Commitment -> Summary -> Snapshot.
 
 See ARCHITECTURE.md section 2 for full design.
 
@@ -11,6 +11,7 @@ Integrates:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 import uuid
@@ -58,7 +59,7 @@ def snap_confidence(raw: float, levels: tuple[float, ...] = (1.0, 0.8, 0.6, 0.4)
 
 
 class ExtractionPipeline:
-    """Full 6-stage extraction pipeline.
+    """Full 7-stage extraction pipeline.
 
     Stage 1: Entity extraction (LLM)
     Stage 2: Relationship inference (LLM)
@@ -66,6 +67,7 @@ class ExtractionPipeline:
     Stage 4: Fact extraction (LLM)
     Stage 5: Commitment extraction (LLM)
     Stage 6: Conversation summary (LLM)
+    Stage 7: Snapshot + delta tracking
 
     Integrates vector-based entity resolution (Open Question #1) via optional
     EmbeddingService for duplicate detection.
@@ -86,6 +88,9 @@ class ExtractionPipeline:
         self._llm = llm
         self._embedding_service = embedding_service
         self._config_service = config_service or ConfigService()
+
+        from engram.services.snapshot import SnapshotService
+        self._snapshot_service = SnapshotService(store)
 
     async def process_message(self, request: IngestRequest) -> IngestResponse:
         """Process a conversation message through the full extraction pipeline.
@@ -158,15 +163,13 @@ class ExtractionPipeline:
             # Step 5: Commitment Extraction
             await self._extract_commitments(request, entities, message_id, run.id)
 
-            # Step 5.5: Conversation summary
+            # Step 6: Conversation summary
             summary = await self._generate_summary(request, entities, relationships, facts, message_id, run.id)
             if summary:
                 logger.info("Summary: %s -> %s", summary.opening_state, summary.closing_state)
 
-            # Step 6: Build snapshot of what changed
-            from engram.services.snapshot import SnapshotService
-            snapshot_service = SnapshotService(self._store)
-            snapshot = await snapshot_service.build_snapshot(
+            # Step 7: Build snapshot of what changed
+            snapshot = await self._snapshot_service.build_snapshot(
                 tenant_id=request.tenant_id,
                 conversation_id=request.conversation_id,
                 message_id=message_id,
@@ -620,10 +623,8 @@ class ExtractionPipeline:
             # Parse target_date if present
             target_date = None
             if item.get("target_date"):
-                try:
+                with contextlib.suppress(ValueError):
                     target_date = datetime.fromisoformat(item["target_date"])
-                except ValueError:
-                    pass
 
             commitment = Commitment(
                 id=Commitment.build_id(request.tenant_id, message_id, i),
@@ -636,7 +637,7 @@ class ExtractionPipeline:
                 status=CommitmentStatus.ACTIVE,
                 created_at=request.timestamp,
                 target_date=target_date,
-                confidence=item.get("confidence", 0.8),
+                confidence=snap_confidence(item.get("confidence", 0.8)),
             )
             await self._store.save_commitment(commitment)
             commitments.append(commitment)
