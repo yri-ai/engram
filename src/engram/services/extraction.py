@@ -188,14 +188,14 @@ class ExtractionPipeline:
             Tuple of (Entity objects upserted to store, raw LLM items for
             relationship inference context).
         """
-        context = await self._get_context_entities(request)
+        context = await self._get_extraction_context(request)
 
         prompt = self._config_service.render_prompt(
             "entity_extraction.jinja2",
             message_text=request.text,
             speaker=request.speaker,
             timestamp=request.timestamp.isoformat(),
-            context_entities=context,
+            context=context,
         )
 
         result = await self._llm.complete_json(prompt)
@@ -490,16 +490,54 @@ class ExtractionPipeline:
 
         return None
 
-    async def _get_context_entities(self, request: IngestRequest) -> list[dict[str, str]]:
-        """Fetch recently mentioned entities in this conversation for LLM context."""
+    async def _get_extraction_context(self, request: IngestRequest) -> dict[str, Any]:
+        """Build rich context for LLM extraction: recent entities + their facts + active relationships.
+
+        Inspired by temporal-relationships' approach of giving the LLM full prior
+        knowledge during extraction, not just entity names.
+        """
         since = request.timestamp - timedelta(days=_CONTEXT_LOOKBACK_DAYS)
-        recent = await self._store.get_recent_entities(
+        recent_entities = await self._store.get_recent_entities(
             tenant_id=request.tenant_id,
             conversation_id=request.conversation_id,
             since=since,
             limit=20,
         )
-        return [{"name": e.canonical_name, "type": e.entity_type.value} for e in recent]
+
+        entity_context: list[dict[str, Any]] = []
+        for e in recent_entities:
+            entry: dict[str, Any] = {"name": e.canonical_name, "type": e.entity_type.value}
+
+            # Attach known facts
+            facts = await self._store.get_facts(request.tenant_id, e.id)
+            if facts:
+                entry["known_facts"] = [
+                    {"key": f.fact_key, "text": f.fact_text, "confidence": f.confidence}
+                    for f in facts[:5]  # Limit to avoid token bloat
+                ]
+
+            entity_context.append(entry)
+
+        # Active relationships between recent entities
+        rel_context: list[dict[str, str]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for e in recent_entities:
+            rels = await self._store.get_active_relationships(e.id)
+            for r in rels:
+                key = (r.source_id, r.target_id, r.rel_type)
+                if key not in seen:
+                    seen.add(key)
+                    rel_context.append({
+                        "source": r.source_id.split(":")[-1],
+                        "target": r.target_id.split(":")[-1],
+                        "type": r.rel_type.value if isinstance(r.rel_type, RelationshipType) else str(r.rel_type),
+                        "evidence": r.evidence[:100] if r.evidence else "",
+                    })
+
+        return {
+            "entities": entity_context,
+            "relationships": rel_context[:20],  # Limit to avoid token bloat
+        }
 
     async def _get_existing_relationships_context(
         self, entities: list[Entity]

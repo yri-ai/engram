@@ -622,3 +622,57 @@ async def test_unresolvable_mention_skipped(pipeline):
 
     assert response.entities_extracted == 1
     assert response.relationships_inferred == 0  # Skipped: target not found
+
+
+# ── Richer LLM Context ──────────────────────────────────────────────────────
+
+
+async def test_entity_extraction_receives_prior_knowledge_context(pipeline):
+    """LLM should receive prior facts and relationships as context, not just entity names."""
+    from engram.models.entity import Entity, EntityType
+    from engram.models.fact import Fact
+
+    # Pre-populate store with existing entity and fact
+    entity = Entity(
+        id="t1:c1:PERSON:alice",
+        tenant_id="t1",
+        conversation_id="c1",
+        entity_type=EntityType.PERSON,
+        canonical_name="alice",
+        last_mentioned=datetime.now(UTC),
+    )
+    await pipeline._store.upsert_entity(entity)
+
+    fact = Fact(
+        id="t1:fact:old:0",
+        tenant_id="t1",
+        conversation_id="c1",
+        message_id="old",
+        entity_id="t1:c1:PERSON:alice",
+        fact_key="age",
+        fact_text="Alice is 32",
+        confidence=0.9,
+    )
+    await pipeline._store.save_fact(fact)
+
+    # Mock LLM — no entities extracted (we just want to verify prompt content)
+    pipeline._llm.complete_json = AsyncMock(
+        side_effect=[
+            {"entities": []},  # entity extraction
+        ]
+    )
+
+    request = IngestRequest(
+        text="Alice said something",
+        speaker="Bob",
+        timestamp=datetime.now(UTC),
+        conversation_id="c1",
+        tenant_id="t1",
+    )
+    await pipeline.process_message(request)
+
+    # Verify the prompt included prior facts context
+    call_args = pipeline._llm.complete_json.call_args_list[0]
+    prompt_text = call_args[0][0]
+    assert "alice" in prompt_text.lower()
+    assert "32" in prompt_text  # Prior fact should appear in context
