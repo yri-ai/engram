@@ -483,7 +483,7 @@ class ExtractionPipeline:
             supersedes_key = item.get("supersedes_key")
             if supersedes_key:
                 existing = await self._store.get_facts(
-                    request.tenant_id, entity.id, fact_key=supersedes_key
+                    request.tenant_id, resolved.id, fact_key=supersedes_key
                 )
                 if existing:
                     await self._store.supersede_fact(existing[0].id, fact)
