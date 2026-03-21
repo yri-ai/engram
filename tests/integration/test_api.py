@@ -10,6 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from engram.main import create_app
+from engram.models.entity import Entity, EntityType
+from engram.models.fact import Fact
 from engram.services.dedup import InMemoryDedup
 from engram.services.extraction import ExtractionPipeline
 from engram.services.resolution import ConflictResolver
@@ -481,3 +483,125 @@ class TestAPIIntegration:
         # Verify entities were created
         list_response = client.get("/entities", params={"tenant_id": "default"})
         assert list_response.status_code == 200
+
+
+class TestGetEntityFactsEndpoint:
+    """Test GET /entities/{entity_id}/facts endpoint."""
+
+    def _seed_entity_and_facts(self, client):
+        """Seed the store with an entity and facts for testing."""
+        store: MemoryStore = client.app.state.store
+        now = datetime.now(UTC)
+
+        entity = Entity(
+            id="e1",
+            tenant_id="t1",
+            conversation_id="c1",
+            entity_type=EntityType.PERSON,
+            canonical_name="Alice",
+            aliases=[],
+            created_at=now,
+            last_mentioned=now,
+            source_messages=["m1"],
+        )
+
+        fact_age = Fact(
+            id="t1:fact:m1:0",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="m1",
+            entity_id="e1",
+            fact_key="age",
+            fact_text="Alice is 32 years old",
+            confidence=0.9,
+        )
+
+        fact_employer = Fact(
+            id="t1:fact:m1:1",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="m1",
+            entity_id="e1",
+            fact_key="employer",
+            fact_text="Alice works at Acme Corp",
+            confidence=0.85,
+        )
+
+        async def seed():
+            await store.upsert_entity(entity)
+            await store.save_fact(fact_age)
+            await store.save_fact(fact_employer)
+
+        asyncio.run(seed())
+
+    def test_get_facts_empty(self, client):
+        """Get facts for entity with none returns empty list."""
+        response = client.get(
+            "/entities/nonexistent/facts",
+            params={"tenant_id": "t1"},
+        )
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_get_facts_returns_all(self, client):
+        """Get all facts for an entity."""
+        self._seed_entity_and_facts(client)
+
+        response = client.get(
+            "/entities/e1/facts",
+            params={"tenant_id": "t1"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        fact_keys = {f["fact_key"] for f in data}
+        assert fact_keys == {"age", "employer"}
+
+    def test_get_facts_filter_by_key(self, client):
+        """Get facts filtered by fact_key."""
+        self._seed_entity_and_facts(client)
+
+        response = client.get(
+            "/entities/e1/facts",
+            params={"tenant_id": "t1", "fact_key": "age"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["fact_key"] == "age"
+        assert data[0]["fact_text"] == "Alice is 32 years old"
+        assert data[0]["entity_id"] == "e1"
+        assert data[0]["confidence"] == 0.9
+
+    def test_get_facts_wrong_tenant(self, client):
+        """Facts from different tenant are not returned."""
+        self._seed_entity_and_facts(client)
+
+        response = client.get(
+            "/entities/e1/facts",
+            params={"tenant_id": "other_tenant"},
+        )
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_get_facts_response_structure(self, client):
+        """Verify fact response contains expected fields."""
+        self._seed_entity_and_facts(client)
+
+        response = client.get(
+            "/entities/e1/facts",
+            params={"tenant_id": "t1", "fact_key": "age"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        fact = data[0]
+        # Verify all key fields are present
+        assert "id" in fact
+        assert "entity_id" in fact
+        assert "fact_key" in fact
+        assert "fact_text" in fact
+        assert "confidence" in fact
+        assert "status" in fact
+        assert "valid_from" in fact
+        assert fact["status"] == "active"
