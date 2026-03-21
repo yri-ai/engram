@@ -1,0 +1,30 @@
+You are extracting commitments and future intentions from a conversation message.
+
+Message: "{{ message_text }}"
+Timestamp: {{ timestamp }}
+Speaker: {{ speaker }}
+
+Extracted Entities:
+{{ entities | tojson(indent=2) }}
+
+Identify any commitments, promises, or future intentions made by the entities mentioned.
+
+Rules:
+1. Only extract clear commitments (e.g., "I will...", "I plan to...", "I'm going to...").
+2. Match the commitment to a specific Entity from the provided list.
+3. If a target date is mentioned (e.g., "by Friday", "next week"), extract it.
+4. Provide a confidence score (1.0 for explicit, 0.8 for strong intention).
+
+Return JSON:
+{
+  "commitments": [
+    {
+      "entity_mention": "exact entity mention from message",
+      "text": "the commitment text",
+      "target_date": "ISO 8601 date if mentioned, else null",
+      "confidence": 0.0-1.0
+    }
+  ]
+}
+
+If no commitments are found, return an empty list.

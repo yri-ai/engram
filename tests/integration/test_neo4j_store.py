@@ -10,8 +10,10 @@ from datetime import UTC, datetime
 
 import pytest
 
+from engram.models.commitment import Commitment, CommitmentStatus
 from engram.models.entity import Entity, EntityType
-from engram.models.relationship import Relationship, RelationshipType
+from engram.models.relationship import Evidence, Relationship, RelationshipType
+from engram.models.run import ExtractionRun, RunStatus
 
 
 def _make_entity(name: str = "kendra", entity_type: EntityType = EntityType.PERSON) -> Entity:
@@ -74,6 +76,49 @@ class TestNeo4jStoreSchema:
         assert "entity_type" in index_names
         assert "entity_tenant" in index_names
         assert "entity_conversation" in index_names
+        assert "run_id" in index_names
+        assert "commitment_id" in index_names
+
+
+@pytest.mark.integration
+class TestNeo4jStoreRunsAndCommitments:
+    async def test_save_and_get_run(self, neo4j_store):
+        run = ExtractionRun(
+            id="run-1",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="msg-1",
+            prompt_id="test-prompt",
+            provider="openai",
+            model="gpt-4",
+            status=RunStatus.COMPLETED,
+        )
+        await neo4j_store.save_run(run)
+
+        # Verify in DB via raw query (as we don't have get_run yet)
+        result = await neo4j_store._execute_read("MATCH (r:ExtractionRun {id: 'run-1'}) RETURN r")
+        assert len(result) == 1
+        assert result[0]["r"]["status"] == "completed"
+
+    async def test_save_and_get_commitment(self, neo4j_store):
+        entity = _make_entity("kendra")
+        await neo4j_store.upsert_entity(entity)
+
+        commitment = Commitment(
+            id="comm-1",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="msg-1",
+            entity_id=entity.id,
+            text="I will run a marathon",
+            status=CommitmentStatus.ACTIVE,
+            confidence=0.9,
+        )
+        await neo4j_store.save_commitment(commitment)
+
+        active = await neo4j_store.get_commitments("t1", entity.id)
+        assert len(active) == 1
+        assert active[0].text == "I will run a marathon"
 
 
 @pytest.mark.integration

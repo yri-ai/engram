@@ -30,6 +30,7 @@ class Entity(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_mentioned: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source_messages: list[str] = Field(default_factory=list)
+    extraction_run_id: str | None = None
     metadata: dict = Field(default_factory=dict)
 
     @staticmethod

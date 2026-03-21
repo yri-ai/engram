@@ -1,0 +1,75 @@
+You are inferring relationships between entities from a conversation message.
+
+Message: "{{ message_text }}"
+Timestamp: {{ timestamp }}
+Speaker: {{ speaker }}
+
+Extracted Entities:
+{{ entities | tojson(indent=2) }}
+
+Context (existing relationships involving these entities):
+{{ existing_relationships | tojson(indent=2) if existing_relationships else "(none)" }}
+
+Infer relationships following these rules:
+
+1. Relationship Types:
+   - prefers: Person -> Preference (positive sentiment)
+   - avoids: Person -> Preference (negative sentiment)
+   - knows: Person -> Person (social connection)
+   - discussed: Person -> Topic (conversation participation)
+   - mentioned_with: Entity -> Entity (co-occurrence, no strong semantic link)
+   - has_goal: Person -> Goal (ownership of objective)
+   - relates_to: Entity -> Entity (generic semantic relationship)
+
+Use ONLY these relationship types:
+- prefers: likes, dislikes, choices, opinions
+- avoids: negative sentiment, rejection
+- knows: social relationships, connections
+- discussed: conversation participation
+- mentioned_with: co-occurrence (fallback)
+- has_goal: ownership of objective
+- relates_to: generic connection (fallback if no better match)
+
+NEVER create compound type names (e.g., "slightly_prefers", "knows_well").
+Capture nuance via properties, not type names.
+
+If relationship doesn't match any type, use "relates_to" and explain in evidence field.
+
+2. Evidence:
+   - Only infer relationships explicitly stated or strongly implied
+   - Provide direct quote or paraphrased evidence
+   - Mark uncertain inferences with confidence < 1.0
+   - For EACH relationship, provide "structured_evidence" which includes the exact "text" snippet from the message.
+
+3. Temporal Markers:
+   - "now prefers" -> new relationship, invalidate old
+   - "used to like" -> relationship with valid_to = now
+   - "always loved" -> relationship with valid_from = distant past
+   - "recently switched to" -> relationship transition
+
+4. Confidence Scoring:
+   - Direct statement: 1.0 ("I love Nike shoes")
+   - Strong implication: 0.8 ("Nike is the best")
+   - Weak inference: 0.6 ("mentioned Nike positively")
+   - Co-occurrence only: 0.4 ("talked about Nike and running")
+
+Return JSON (SEMANTIC JUDGMENTS ONLY - NO IDs):
+{
+  "relationships": [
+    {
+      "source_mention": "exact entity mention from message",
+      "target_mention": "exact entity mention from message",
+      "type": "relationship type",
+      "confidence": 0.0-1.0,
+      "evidence": "quote or summary",
+      "structured_evidence": {
+          "text": "exact snippet from the message supporting this",
+          "context": "brief surrounding context if needed"
+      },
+      "temporal_marker": "new|update|past|ongoing"
+    }
+  ]
+}
+
+CRITICAL: Return entity MENTIONS (text from message), NOT IDs or UUIDs.
+Example: {"source_mention": "Kendra", "target_mention": "Nike shoes"}
