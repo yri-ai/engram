@@ -1,4 +1,4 @@
-"""3-stage extraction pipeline: Entity -> Relationship -> Conflict Resolution.
+"""5-stage extraction pipeline: Entity -> Relationship -> Conflict Resolution -> Fact -> Commitment.
 
 See ARCHITECTURE.md section 2 for full design.
 
@@ -14,16 +14,16 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from engram.llm.prompts import (
-    build_entity_extraction_prompt,
-    build_relationship_inference_prompt,
-)
+from engram.config import ConfigService, settings
+from engram.models.commitment import Commitment, CommitmentStatus
 from engram.models.entity import Entity, EntityType
+from engram.models.fact import Fact
 from engram.models.message import IngestRequest, IngestResponse
-from engram.models.relationship import Relationship, RelationshipType
+from engram.models.relationship import Evidence, Relationship, RelationshipType
+from engram.models.run import ExtractionRun, RunStatus
 
 if TYPE_CHECKING:
     from engram.llm.provider import LLMProvider
@@ -57,11 +57,13 @@ def snap_confidence(raw: float, levels: tuple[float, ...] = (1.0, 0.8, 0.6, 0.4)
 
 
 class ExtractionPipeline:
-    """Full 3-stage extraction pipeline.
+    """Full 5-stage extraction pipeline.
 
     Stage 1: Entity extraction (LLM)
     Stage 2: Relationship inference (LLM)
     Stage 3: Conflict resolution (rule-based via ConflictResolver)
+    Stage 4: Fact extraction (LLM)
+    Stage 5: Commitment extraction (LLM)
 
     Integrates vector-based entity resolution (Open Question #1) via optional
     EmbeddingService for duplicate detection.
@@ -74,12 +76,14 @@ class ExtractionPipeline:
         resolver: ConflictResolver,
         llm: LLMProvider,
         embedding_service: EmbeddingService | None = None,
+        config_service: ConfigService | None = None,
     ) -> None:
         self._store = store
         self._dedup = dedup
         self._resolver = resolver
         self._llm = llm
         self._embedding_service = embedding_service
+        self._config_service = config_service or ConfigService()
 
     async def process_message(self, request: IngestRequest) -> IngestResponse:
         """Process a conversation message through the full extraction pipeline.
@@ -87,11 +91,10 @@ class ExtractionPipeline:
         Returns an IngestResponse with counts of entities extracted,
         relationships inferred, and conflicts resolved.
         """
-        start = time.monotonic()
+        start_time = time.monotonic()
         message_id = request.message_id or str(uuid.uuid4())
 
-        # Step 0: Idempotency check — mark before pipeline so concurrent duplicates
-        # are rejected atomically. Rolled back if the pipeline fails so retries work.
+        # Step 0: Idempotency check
         is_new = await self._dedup.check_and_mark(message_id)
         if not is_new:
             return IngestResponse(
@@ -102,13 +105,32 @@ class ExtractionPipeline:
                 processing_time_ms=0,
             )
 
+        # Initialize Extraction Run
+        run = ExtractionRun(
+            id=str(uuid.uuid4()),
+            tenant_id=request.tenant_id,
+            conversation_id=request.conversation_id,
+            message_id=message_id,
+            prompt_id="entity_extraction.jinja2 + relationship_inference.jinja2",
+            prompt_sha256=self._config_service.get_template_sha256("entity_extraction.jinja2"),
+            provider=settings.llm_provider,
+            model=settings.llm_model,
+            temperature=settings.llm_temperature,
+            status=RunStatus.RUNNING,
+        )
+        await self._store.save_run(run)
+
         try:
             # Step 1: Entity extraction (LLM)
-            entities, raw_entity_items = await self._extract_entities(request, message_id)
+            entities, raw_entity_items = await self._extract_entities(request, message_id, run.id)
 
             # No entities → nothing to infer, skip Stage 2
             if not entities:
-                elapsed_ms = (time.monotonic() - start) * 1000
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                run.status = RunStatus.COMPLETED
+                run.completed_at = datetime.now(UTC)
+                run.processing_time_ms = elapsed_ms
+                await self._store.save_run(run)
                 return IngestResponse(
                     message_id=message_id,
                     entities_extracted=0,
@@ -119,7 +141,7 @@ class ExtractionPipeline:
 
             # Step 2: Relationship inference (LLM)
             relationships = await self._infer_relationships(
-                request, entities, raw_entity_items, message_id
+                request, entities, raw_entity_items, message_id, run.id
             )
 
             # Step 3: Conflict resolution + graph writes
@@ -128,11 +150,25 @@ class ExtractionPipeline:
                 _, terminated = await self._resolver.resolve_and_create(rel)
                 conflicts += terminated
 
-        except Exception:
+            # Step 4: Fact extraction
+            facts = await self._extract_facts(request, entities, message_id, run.id)
+
+            # Step 5: Commitment Extraction
+            await self._extract_commitments(request, entities, message_id, run.id)
+
+            run.status = RunStatus.COMPLETED
+            run.completed_at = datetime.now(UTC)
+        except Exception as e:
+            run.status = RunStatus.FAILED
+            run.error_text = str(e)
+            run.completed_at = datetime.now(UTC)
+            await self._store.save_run(run)
             await self._dedup.rollback(message_id)
             raise
 
-        elapsed_ms = (time.monotonic() - start) * 1000
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        run.processing_time_ms = elapsed_ms
+        await self._store.save_run(run)
         return IngestResponse(
             message_id=message_id,
             entities_extracted=len(entities),
@@ -144,7 +180,7 @@ class ExtractionPipeline:
     # ── Stage 1: Entity Extraction ───────────────────────────────────────
 
     async def _extract_entities(
-        self, request: IngestRequest, message_id: str
+        self, request: IngestRequest, message_id: str, run_id: str
     ) -> tuple[list[Entity], list[dict[str, Any]]]:
         """Extract entities from message text via LLM.
 
@@ -154,7 +190,8 @@ class ExtractionPipeline:
         """
         context = await self._get_context_entities(request)
 
-        prompt = build_entity_extraction_prompt(
+        prompt = self._config_service.render_prompt(
+            "entity_extraction.jinja2",
             message_text=request.text,
             speaker=request.speaker,
             timestamp=request.timestamp.isoformat(),
@@ -198,6 +235,7 @@ class ExtractionPipeline:
                 canonical_name=canonical,
                 aliases=[item["name"]],
                 source_messages=[message_id],
+                extraction_run_id=run_id,
                 created_at=request.timestamp,  # Fix: Use message timestamp, not now()
                 last_mentioned=request.timestamp,  # Fix: Use message timestamp, not now()
             )
@@ -251,6 +289,7 @@ class ExtractionPipeline:
         entities: list[Entity],
         raw_entity_items: list[dict[str, Any]],
         message_id: str,
+        run_id: str,
     ) -> list[Relationship]:
         """Infer relationships between extracted entities via LLM.
 
@@ -264,7 +303,8 @@ class ExtractionPipeline:
         # Fetch existing active relationships for context
         existing_rels = await self._get_existing_relationships_context(entities)
 
-        prompt = build_relationship_inference_prompt(
+        prompt = self._config_service.render_prompt(
+            "relationship_inference.jinja2",
             message_text=request.text,
             speaker=request.speaker,
             timestamp=request.timestamp.isoformat(),
@@ -275,10 +315,7 @@ class ExtractionPipeline:
         result = await self._llm.complete_json(prompt)
         group_id = request.group_id or request.conversation_id
 
-        # Expand mention resolution pool to include all entities known for this
-        # conversation. The LLM often references the speaker or entities from earlier
-        # messages that weren't re-extracted from the current message text
-        # (e.g., "I love Nike..." where "I" resolves to the Kendra entity from msg 1).
+        # Expand mention resolution pool
         context_entities = await self._store.list_entities(
             tenant_id=request.tenant_id,
             conversation_id=request.conversation_id,
@@ -316,22 +353,116 @@ class ExtractionPipeline:
             # Open Question #4: Snap confidence to discrete levels
             confidence = snap_confidence(item.get("confidence", 0.8))
 
+            # Handle structured evidence
+            structured_evidence = []
+            if "structured_evidence" in item:
+                se = item["structured_evidence"]
+                structured_evidence.append(
+                    Evidence(
+                        message_id=message_id,
+                        text=se.get("text", ""),
+                        context=se.get("context"),
+                        observed_at=request.timestamp,
+                    )
+                )
+
             relationship = Relationship(
                 tenant_id=request.tenant_id,
                 conversation_id=request.conversation_id,
                 group_id=group_id,
                 message_id=message_id,
+                extraction_run_id=run_id,
                 source_id=source.id,
                 target_id=target.id,
                 rel_type=rel_type,
                 confidence=confidence,
                 evidence=item.get("evidence", ""),
+                structured_evidence=structured_evidence,
                 valid_from=request.timestamp,
                 metadata=metadata,
             )
             relationships.append(relationship)
 
         return relationships
+
+    # ── Stage 3.5: Fact Extraction ─────────────────────────────────────────
+
+    async def _extract_facts(
+        self,
+        request: IngestRequest,
+        entities: list[Entity],
+        message_id: str,
+        run_id: str,
+    ) -> list[Fact]:
+        """Extract standalone facts (knowledge claims about single entities) via LLM."""
+        entity_dicts = [{"name": e.canonical_name, "type": e.entity_type.value} for e in entities]
+
+        # Gather existing facts for each entity (for context / supersession)
+        existing_facts: list[dict[str, Any]] = []
+        for entity in entities:
+            facts = await self._store.get_facts(request.tenant_id, entity.id)
+            for f in facts:
+                existing_facts.append(
+                    {
+                        "entity": entity.canonical_name,
+                        "fact_key": f.fact_key,
+                        "fact_text": f.fact_text,
+                        "confidence": f.confidence,
+                    }
+                )
+
+        prompt = self._config_service.render_prompt(
+            "fact_extraction.jinja2",
+            message_text=request.text,
+            speaker=request.speaker,
+            timestamp=request.timestamp.isoformat(),
+            entities=entity_dicts,
+            existing_facts=existing_facts,
+        )
+
+        result = await self._llm.complete_json(prompt)
+        raw_items: list[dict[str, Any]] = result.get("facts", [])
+
+        created_facts: list[Fact] = []
+        for i, item in enumerate(raw_items):
+            # Resolve entity mention to Entity object
+            entity = self._find_entity_by_mention(item.get("entity_mention", ""), entities)
+            if not entity:
+                logger.warning(
+                    "Could not resolve fact entity mention '%s' — skipping",
+                    item.get("entity_mention"),
+                )
+                continue
+
+            fact = Fact(
+                id=Fact.build_id(request.tenant_id, message_id, i),
+                tenant_id=request.tenant_id,
+                conversation_id=request.conversation_id,
+                message_id=message_id,
+                extraction_run_id=run_id,
+                entity_id=entity.id,
+                fact_key=item["fact_key"],
+                fact_text=item["fact_text"],
+                confidence=snap_confidence(item.get("confidence", 0.8)),
+                valid_from=request.timestamp,
+            )
+
+            # Handle supersession
+            supersedes_key = item.get("supersedes_key")
+            if supersedes_key:
+                existing = await self._store.get_facts(
+                    request.tenant_id, entity.id, fact_key=supersedes_key
+                )
+                if existing:
+                    await self._store.supersede_fact(existing[0].id, fact)
+                else:
+                    await self._store.save_fact(fact)
+            else:
+                await self._store.save_fact(fact)
+
+            created_facts.append(fact)
+
+        return created_facts
 
     # ── Internal Helpers ─────────────────────────────────────────────────
 
@@ -395,3 +526,57 @@ class ExtractionPipeline:
                     )
 
         return existing
+
+    async def _extract_commitments(
+        self,
+        request: IngestRequest,
+        entities: list[Entity],
+        message_id: str,
+        run_id: str,
+    ) -> list[Commitment]:
+        """Extract commitments/intentions from message via LLM."""
+        entity_dicts = [{"name": e.canonical_name, "type": e.entity_type.value} for e in entities]
+
+        prompt = self._config_service.render_prompt(
+            "commitment_extraction.jinja2",
+            message_text=request.text,
+            speaker=request.speaker,
+            timestamp=request.timestamp.isoformat(),
+            entities=entity_dicts,
+        )
+
+        result = await self._llm.complete_json(prompt)
+        raw_items: list[dict[str, Any]] = result.get("commitments", [])
+
+        commitments: list[Commitment] = []
+        for i, item in enumerate(raw_items):
+            # Resolve entity
+            entity = self._find_entity_by_mention(item.get("entity_mention", ""), entities)
+            if not entity:
+                continue
+
+            # Parse target_date if present
+            target_date = None
+            if item.get("target_date"):
+                try:
+                    target_date = datetime.fromisoformat(item["target_date"])
+                except ValueError:
+                    pass
+
+            commitment = Commitment(
+                id=Commitment.build_id(request.tenant_id, message_id, i),
+                tenant_id=request.tenant_id,
+                conversation_id=request.conversation_id,
+                message_id=message_id,
+                extraction_run_id=run_id,
+                entity_id=entity.id,
+                text=item["text"],
+                status=CommitmentStatus.ACTIVE,
+                created_at=request.timestamp,
+                target_date=target_date,
+                confidence=item.get("confidence", 0.8),
+            )
+            await self._store.save_commitment(commitment)
+            commitments.append(commitment)
+
+        return commitments

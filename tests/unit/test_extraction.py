@@ -1,4 +1,4 @@
-"""Tests for the 3-stage extraction pipeline.
+"""Tests for the 4-stage extraction pipeline.
 
 Covers:
 - Basic extraction (entity + relationship creation)
@@ -7,15 +7,19 @@ Covers:
 - Open Question #2: Unknown relationship types fall back to relates_to
 - Open Question #3: group_id for cross-conversation entity linking
 - Open Question #4: Confidence snapping to discrete levels
+- Fact extraction (standalone knowledge claims about entities)
 - Edge cases: empty extraction, unresolvable mentions
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 
+from engram.models.commitment import CommitmentStatus
 from engram.models.message import IngestRequest
 from engram.models.relationship import RelationshipType
+from engram.models.run import RunStatus
 from engram.services.dedup import InMemoryDedup
 from engram.services.extraction import ExtractionPipeline, snap_confidence
 from engram.services.resolution import ConflictResolver
@@ -98,6 +102,10 @@ async def test_pipeline_extracts_entities_and_relationships(pipeline):
                     },
                 ]
             },
+            # Stage 3.5: Fact extraction
+            {"facts": []},
+            # Stage 4: Commitment extraction
+            {"commitments": []},
         ]
     )
 
@@ -121,6 +129,73 @@ async def test_pipeline_extracts_entities_and_relationships(pipeline):
     rels = await pipeline._store.get_active_relationships(kendra_id)
     assert len(rels) == 1
     assert rels[0].rel_type == RelationshipType.PREFERS
+    assert rels[0].extraction_run_id is not None
+
+
+async def test_pipeline_creates_extraction_run(pipeline):
+    """Pipeline should create and persist an ExtractionRun."""
+    pipeline._llm.complete_json = AsyncMock(
+        side_effect=[
+            {"entities": [{"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0}]},
+            {"relationships": []},
+            {"facts": []},
+            {"commitments": []},
+        ]
+    )
+
+    request = IngestRequest(
+        text="Kendra is here",
+        speaker="Kendra",
+        conversation_id="c1",
+        tenant_id="t1",
+    )
+    await pipeline.process_message(request)
+
+    # Verify run exists in store
+    runs = list(pipeline._store._runs.values())
+    assert len(runs) == 1
+    assert runs[0].status == RunStatus.COMPLETED
+    assert runs[0].prompt_id is not None
+
+
+async def test_pipeline_extracts_commitments(pipeline):
+    """Pipeline should extract commitments and save them to store."""
+    pipeline._llm.complete_json = AsyncMock(
+        side_effect=[
+            # Entities
+            {"entities": [{"name": "Kendra", "canonical": "kendra", "type": "PERSON", "confidence": 1.0}]},
+            # Relationships
+            {"relationships": []},
+            # Facts
+            {"facts": []},
+            # Commitments
+            {
+                "commitments": [
+                    {
+                        "entity_mention": "Kendra",
+                        "text": "I will finish the report by Friday",
+                        "target_date": "2026-03-27T17:00:00Z",
+                        "confidence": 1.0,
+                    }
+                ]
+            },
+        ]
+    )
+
+    request = IngestRequest(
+        text="I will finish the report by Friday",
+        speaker="Kendra",
+        conversation_id="c1",
+        tenant_id="t1",
+    )
+    await pipeline.process_message(request)
+
+    # Verify commitment in store
+    kendra_id = "t1:c1:PERSON:kendra"
+    commitments = await pipeline._store.get_commitments("t1", kendra_id)
+    assert len(commitments) == 1
+    assert commitments[0].text == "I will finish the report by Friday"
+    assert commitments[0].status == CommitmentStatus.ACTIVE
 
 
 async def test_pipeline_deduplicates_messages(pipeline):
@@ -138,6 +213,8 @@ async def test_pipeline_deduplicates_messages(pipeline):
                 ]
             },
             {"relationships": []},
+            {"facts": []},
+            {"commitments": []},
         ]
     )
 
@@ -189,6 +266,8 @@ async def test_correction_detection(pipeline):
                     },
                 ]
             },
+            {"facts": []},
+            {"commitments": []},
             # Message 2: Actually Adidas
             {
                 "entities": [
@@ -218,6 +297,8 @@ async def test_correction_detection(pipeline):
                     },
                 ]
             },
+            {"facts": []},
+            {"commitments": []},
         ]
     )
 
@@ -289,6 +370,8 @@ async def test_unknown_relationship_type_falls_back_to_relates_to(pipeline):
                     },
                 ]
             },
+            {"facts": []},
+            {"commitments": []},
         ]
     )
 
@@ -327,6 +410,8 @@ async def test_group_id_used_for_entity_ids(pipeline):
                 ]
             },
             {"relationships": []},
+            {"facts": []},
+            {"commitments": []},
         ]
     )
 
@@ -361,6 +446,8 @@ async def test_group_id_defaults_to_conversation_id(pipeline):
                 ]
             },
             {"relationships": []},
+            {"facts": []},
+            {"commitments": []},
         ]
     )
 
@@ -413,6 +500,8 @@ async def test_confidence_is_snapped_in_pipeline(pipeline):
                     },
                 ]
             },
+            {"facts": []},
+            {"commitments": []},
         ]
     )
 
@@ -428,6 +517,42 @@ async def test_confidence_is_snapped_in_pipeline(pipeline):
     rels = await pipeline._store.get_active_relationships(kendra_id)
     assert len(rels) == 1
     assert rels[0].confidence == 0.8  # Snapped from 0.73
+
+
+# ── Fact Extraction ──────────────────────────────────────────────────────────
+
+
+async def test_fact_extraction(pipeline):
+    """Test that facts are extracted from messages."""
+    pipeline._llm.complete_json = AsyncMock(
+        side_effect=[
+            # Stage 1: Entity extraction
+            {"entities": [{"name": "Alice", "canonical": "alice", "type": "PERSON", "confidence": 1.0}]},
+            # Stage 2: Relationship inference
+            {"relationships": []},
+            # Stage 3.5: Fact extraction
+            {"facts": [
+                {"entity_mention": "Alice", "fact_key": "age", "fact_text": "Alice is 32 years old", "confidence": 0.9},
+            ]},
+            # Stage 4: Commitment extraction
+            {"commitments": []},
+        ]
+    )
+
+    request = IngestRequest(
+        text="Alice mentioned she is 32 years old",
+        speaker="Alice",
+        timestamp=datetime.now(UTC),
+        conversation_id="c1",
+        tenant_id="t1",
+    )
+    response = await pipeline.process_message(request)
+    assert response.entities_extracted == 1
+
+    facts = await pipeline._store.get_facts("t1", "t1:c1:PERSON:alice")
+    assert len(facts) == 1
+    assert facts[0].fact_key == "age"
+    assert facts[0].fact_text == "Alice is 32 years old"
 
 
 # ── Edge Cases ───────────────────────────────────────────────────────────────
@@ -482,6 +607,8 @@ async def test_unresolvable_mention_skipped(pipeline):
                     },
                 ]
             },
+            {"facts": []},
+            {"commitments": []},
         ]
     )
 
