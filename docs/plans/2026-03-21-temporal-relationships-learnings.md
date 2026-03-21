@@ -1,6 +1,6 @@
 # Temporal-Relationships Learnings Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Note for contributors:** Implement this plan task-by-task, ensuring each step is completed and validated before moving on.
 
 **Goal:** Port the 4 most impactful patterns from temporal-relationships into engram: standalone Fact model, richer LLM extraction context, conversation state snapshots with delta tracking, and conversation summary generation.
 

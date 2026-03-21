@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from neo4j import AsyncDriver, AsyncGraphDatabase
 
 from engram.models.entity import Entity, EntityType
-from engram.models.relationship import Relationship, RelationshipType
+from engram.models.relationship import Evidence, Relationship, RelationshipType
 from engram.storage.base import GraphStore
 
 if TYPE_CHECKING:
@@ -168,16 +168,27 @@ class Neo4jStore(GraphStore):
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
 
+        # Hydrate structured_evidence from JSON string
+        structured_evidence_raw = props.get("structured_evidence", "[]")
+        if isinstance(structured_evidence_raw, str):
+            structured_evidence_raw = json.loads(structured_evidence_raw)
+        structured_evidence = [
+            Evidence(**e) if isinstance(e, dict) else e
+            for e in structured_evidence_raw
+        ]
+
         return Relationship(
             tenant_id=props["tenant_id"],
             conversation_id=props["conversation_id"],
             group_id=props.get("group_id"),
             message_id=props["message_id"],
+            extraction_run_id=props.get("extraction_run_id"),
             source_id=source_id,
             target_id=target_id,
             rel_type=RelationshipType(props["type"]),
             confidence=props["confidence"],
             evidence=props.get("evidence", ""),
+            structured_evidence=structured_evidence,
             valid_from=datetime.fromisoformat(props["valid_from"]),
             valid_to=(datetime.fromisoformat(props["valid_to"]) if props.get("valid_to") else None),
             recorded_from=datetime.fromisoformat(props["recorded_from"]),

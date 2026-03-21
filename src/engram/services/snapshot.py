@@ -42,7 +42,7 @@ class SnapshotService:
         for e in entities:
             rels = await self._store.get_active_relationships(e.id)
             for r in rels:
-                rel_ids.add((r.source_id, r.target_id, r.rel_type))
+                rel_ids.add((r.source_id, r.target_id, r.rel_type.value))
             facts = await self._store.get_facts(tenant_id, e.id)
             total_fact_count += len(facts)
 

@@ -124,7 +124,7 @@ Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interacti
 
 ## What Gets Extracted
 
-Engram's 6-stage pipeline extracts five artifact types from every message:
+Engram's 7-stage pipeline extracts five artifact types from every message:
 
 ### Entities
 Conversation-native types: **Person**, **Preference**, **Goal**, **Concept**, **Event**, **Topic**. Each with vector embeddings for deduplication and deterministic IDs for idempotent processing.
@@ -320,7 +320,7 @@ Engram's architecture is described in detail in [ARCHITECTURE.md](ARCHITECTURE.m
 - **LLM**: LiteLLM (multi-provider: OpenAI, Anthropic, Ollama)
 - **Embeddings**: text-embedding-3-small (or nomic-embed-text for local)
 
-### Extraction Pipeline (6 stages)
+### Extraction Pipeline (7 stages)
 
 1. **Entity Extraction** → LLM identifies entities with rich prior context (existing facts + relationships)
 2. **Relationship Inference** → LLM extracts relationships with confidence scores and structured evidence
@@ -328,8 +328,7 @@ Engram's architecture is described in detail in [ARCHITECTURE.md](ARCHITECTURE.m
 4. **Fact Extraction** → LLM extracts standalone facts with supersession detection
 5. **Commitment Extraction** → LLM identifies future-oriented actions and intentions
 6. **Conversation Summary** → LLM generates narrative arc (opening → shift → closing)
-
-After all stages, a **snapshot** captures the conversation state and what changed (delta tracking).
+7. **Snapshot** → Captures conversation state and what changed (delta tracking)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for full schema, API design, and implementation details.
 
@@ -340,7 +339,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full schema, API design, and implemen
 ### v0.1.0 — MVP (Current)
 
 - ✅ Core graph schema (entities, bitemporal relationships)
-- ✅ 6-stage extraction pipeline (entities, relationships, facts, commitments, summaries)
+- ✅ 7-stage extraction pipeline (entities, relationships, facts, commitments, summaries)
 - ✅ Context-aware extraction (prior facts + relationships fed to LLM)
 - ✅ Fact model with supersession chains
 - ✅ Conversation snapshots with delta tracking

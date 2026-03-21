@@ -1,4 +1,4 @@
-"""Tests for the 6-stage extraction pipeline.
+"""Tests for the 7-stage extraction pipeline.
 
 Covers:
 - Basic extraction (entity + relationship creation)

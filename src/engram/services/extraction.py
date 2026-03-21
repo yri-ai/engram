@@ -551,13 +551,14 @@ class ExtractionPipeline:
         for e in recent_entities:
             rels = await self._store.get_active_relationships(e.id)
             for r in rels:
-                key = (r.source_id, r.target_id, r.rel_type)
+                rel_type_str = r.rel_type.value if isinstance(r.rel_type, RelationshipType) else str(r.rel_type)
+                key = (r.source_id, r.target_id, rel_type_str)
                 if key not in seen:
                     seen.add(key)
                     rel_context.append({
                         "source": r.source_id.split(":")[-1],
                         "target": r.target_id.split(":")[-1],
-                        "type": r.rel_type.value if isinstance(r.rel_type, RelationshipType) else str(r.rel_type),
+                        "type": rel_type_str,
                         "evidence": r.evidence[:100] if r.evidence else "",
                     })
 
@@ -576,16 +577,15 @@ class ExtractionPipeline:
         for entity in entities:
             rels = await self._store.get_active_relationships(entity.id)
             for r in rels:
-                key = (r.source_id, r.target_id, r.rel_type)
+                rel_type_str = r.rel_type.value if isinstance(r.rel_type, RelationshipType) else str(r.rel_type)
+                key = (r.source_id, r.target_id, rel_type_str)
                 if key not in seen:
                     seen.add(key)
                     existing.append(
                         {
                             "source": r.source_id.split(":")[-1],
                             "target": r.target_id.split(":")[-1],
-                            "type": r.rel_type.value
-                            if isinstance(r.rel_type, RelationshipType)
-                            else str(r.rel_type),
+                            "type": rel_type_str,
                             "confidence": r.confidence,
                         }
                     )
@@ -620,11 +620,14 @@ class ExtractionPipeline:
             if not entity:
                 continue
 
-            # Parse target_date if present
+            # Parse target_date if present (normalize Z suffix for fromisoformat)
             target_date = None
             if item.get("target_date"):
+                raw_date = item["target_date"]
+                if isinstance(raw_date, str) and raw_date.endswith("Z"):
+                    raw_date = raw_date[:-1] + "+00:00"
                 with contextlib.suppress(ValueError):
-                    target_date = datetime.fromisoformat(item["target_date"])
+                    target_date = datetime.fromisoformat(raw_date)
 
             commitment = Commitment(
                 id=Commitment.build_id(request.tenant_id, message_id, i),
