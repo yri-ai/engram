@@ -1,4 +1,4 @@
-"""5-stage extraction pipeline: Entity -> Relationship -> Conflict Resolution -> Fact -> Commitment.
+"""6-stage extraction pipeline: Entity -> Relationship -> Conflict Resolution -> Fact -> Commitment -> Summary.
 
 See ARCHITECTURE.md section 2 for full design.
 
@@ -24,6 +24,7 @@ from engram.models.fact import Fact
 from engram.models.message import IngestRequest, IngestResponse
 from engram.models.relationship import Evidence, Relationship, RelationshipType
 from engram.models.run import ExtractionRun, RunStatus
+from engram.models.summary import ConversationSummary
 
 if TYPE_CHECKING:
     from engram.llm.provider import LLMProvider
@@ -57,13 +58,14 @@ def snap_confidence(raw: float, levels: tuple[float, ...] = (1.0, 0.8, 0.6, 0.4)
 
 
 class ExtractionPipeline:
-    """Full 5-stage extraction pipeline.
+    """Full 6-stage extraction pipeline.
 
     Stage 1: Entity extraction (LLM)
     Stage 2: Relationship inference (LLM)
     Stage 3: Conflict resolution (rule-based via ConflictResolver)
     Stage 4: Fact extraction (LLM)
     Stage 5: Commitment extraction (LLM)
+    Stage 6: Conversation summary (LLM)
 
     Integrates vector-based entity resolution (Open Question #1) via optional
     EmbeddingService for duplicate detection.
@@ -155,6 +157,11 @@ class ExtractionPipeline:
 
             # Step 5: Commitment Extraction
             await self._extract_commitments(request, entities, message_id, run.id)
+
+            # Step 5.5: Conversation summary
+            summary = await self._generate_summary(request, entities, relationships, facts, message_id, run.id)
+            if summary:
+                logger.info("Summary: %s -> %s", summary.opening_state, summary.closing_state)
 
             # Step 6: Build snapshot of what changed
             from engram.services.snapshot import SnapshotService
@@ -635,3 +642,43 @@ class ExtractionPipeline:
             commitments.append(commitment)
 
         return commitments
+
+    async def _generate_summary(
+        self,
+        request: IngestRequest,
+        entities: list[Entity],
+        relationships: list[Relationship],
+        facts: list[Fact],
+        message_id: str,
+        run_id: str,
+    ) -> ConversationSummary | None:
+        """Generate a narrative summary of the conversation message."""
+        entity_dicts = [{"name": e.canonical_name, "type": e.entity_type.value} for e in entities]
+        fact_dicts = [{"key": f.fact_key, "text": f.fact_text} for f in facts] if facts else None
+        rel_dicts = [
+            {"source": r.source_id.split(":")[-1], "type": r.rel_type.value, "target": r.target_id.split(":")[-1]}
+            for r in relationships
+        ] if relationships else None
+
+        prompt = self._config_service.render_prompt(
+            "conversation_summary.jinja2",
+            message_text=request.text,
+            speaker=request.speaker,
+            timestamp=request.timestamp.isoformat(),
+            entities=entity_dicts,
+            facts=fact_dicts,
+            relationships=rel_dicts,
+        )
+
+        result = await self._llm.complete_json(prompt)
+        return ConversationSummary(
+            id=ConversationSummary.build_id(request.tenant_id, message_id),
+            tenant_id=request.tenant_id,
+            conversation_id=request.conversation_id,
+            message_id=message_id,
+            extraction_run_id=run_id,
+            opening_state=result.get("opening_state", ""),
+            key_shift=result.get("key_shift"),
+            closing_state=result.get("closing_state", ""),
+            breakthrough=result.get("breakthrough", False),
+        )

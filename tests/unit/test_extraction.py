@@ -1,4 +1,4 @@
-"""Tests for the 4-stage extraction pipeline.
+"""Tests for the 6-stage extraction pipeline.
 
 Covers:
 - Basic extraction (entity + relationship creation)
@@ -106,6 +106,8 @@ async def test_pipeline_extracts_entities_and_relationships(pipeline):
             {"facts": []},
             # Stage 4: Commitment extraction
             {"commitments": []},
+            # Stage 5: Conversation summary
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -140,6 +142,7 @@ async def test_pipeline_creates_extraction_run(pipeline):
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -179,6 +182,8 @@ async def test_pipeline_extracts_commitments(pipeline):
                     }
                 ]
             },
+            # Summary
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -215,6 +220,7 @@ async def test_pipeline_deduplicates_messages(pipeline):
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -268,6 +274,7 @@ async def test_correction_detection(pipeline):
             },
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
             # Message 2: Actually Adidas
             {
                 "entities": [
@@ -299,6 +306,7 @@ async def test_correction_detection(pipeline):
             },
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "correction", "key_shift": "switched to Adidas", "closing_state": "prefers Adidas", "breakthrough": True},
         ]
     )
 
@@ -372,6 +380,7 @@ async def test_unknown_relationship_type_falls_back_to_relates_to(pipeline):
             },
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -412,6 +421,7 @@ async def test_group_id_used_for_entity_ids(pipeline):
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -448,6 +458,7 @@ async def test_group_id_defaults_to_conversation_id(pipeline):
             {"relationships": []},
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -502,6 +513,7 @@ async def test_confidence_is_snapped_in_pipeline(pipeline):
             },
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -536,6 +548,8 @@ async def test_fact_extraction(pipeline):
             ]},
             # Stage 4: Commitment extraction
             {"commitments": []},
+            # Stage 5: Conversation summary
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 
@@ -609,6 +623,7 @@ async def test_unresolvable_mention_skipped(pipeline):
             },
             {"facts": []},
             {"commitments": []},
+            {"opening_state": "context", "key_shift": None, "closing_state": "state", "breakthrough": False},
         ]
     )
 

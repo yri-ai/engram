@@ -1,0 +1,32 @@
+You are generating a brief narrative summary of a conversation message.
+
+Message: "{{ message_text }}"
+Timestamp: {{ timestamp }}
+Speaker: {{ speaker }}
+
+Extracted Entities:
+{{ entities | tojson(indent=2) }}
+
+{% if facts %}
+Facts extracted:
+{{ facts | tojson(indent=2) }}
+{% endif %}
+
+{% if relationships %}
+Relationships inferred:
+{{ relationships | tojson(indent=2) }}
+{% endif %}
+
+Generate a 3-part narrative arc:
+1. opening_state: What was the context/situation before this message?
+2. key_shift: What new information or change occurred? (null if no shift)
+3. closing_state: What is the state after this message?
+4. breakthrough: Was there a significant revelation or change? (true/false)
+
+Return JSON:
+{
+  "opening_state": "brief description of prior context",
+  "key_shift": "what changed (or null)",
+  "closing_state": "brief description of current state",
+  "breakthrough": false
+}

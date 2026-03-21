@@ -5,6 +5,7 @@ from engram.models.entity import Entity, EntityType
 from engram.models.fact import Fact, FactStatus
 from engram.models.message import IngestRequest
 from engram.models.relationship import Relationship, RelationshipType
+from engram.models.summary import ConversationSummary
 
 
 def test_entity_creation():
@@ -117,3 +118,21 @@ def test_fact_supersession():
         supersedes_fact_id="t1:fact:msg1:0",
     )
     assert f.supersedes_fact_id == "t1:fact:msg1:0"
+
+
+def test_conversation_summary():
+    s = ConversationSummary(
+        id="t1:summary:msg1",
+        tenant_id="t1",
+        conversation_id="c1",
+        message_id="msg1",
+        opening_state="Discussion about fitness goals",
+        key_shift="Alice revealed she switched from Nike to Hoka",
+        closing_state="Commitment to try trail running",
+        breakthrough=True,
+    )
+    assert s.breakthrough is True
+
+
+def test_conversation_summary_build_id():
+    assert ConversationSummary.build_id("t1", "msg1") == "t1:summary:msg1"
