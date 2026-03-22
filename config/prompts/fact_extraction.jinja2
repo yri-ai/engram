@@ -1,0 +1,40 @@
+You are extracting standalone facts about entities from a conversation message.
+
+Message: "{{ message_text }}"
+Timestamp: {{ timestamp }}
+Speaker: {{ speaker }}
+
+Extracted Entities:
+{{ entities | tojson(indent=2) }}
+
+{% if existing_facts %}
+Known facts about these entities:
+{{ existing_facts | tojson(indent=2) }}
+{% endif %}
+
+Extract FACTS — knowledge claims about a single entity that are NOT relationships
+between two entities. Examples:
+- "Alice is 32 years old" -> fact about Alice (key: "age")
+- "Bob works at Acme Corp" -> fact about Bob (key: "employer")
+- "The deadline is March 30th" -> fact about the deadline event (key: "date")
+
+Rules:
+1. Only extract facts explicitly stated or strongly implied.
+2. Each fact needs a semantic key for grouping (e.g., "age", "location", "employer").
+3. If a fact contradicts a known fact, it supersedes the old one.
+4. Do NOT extract relationships between entities — those are handled separately.
+
+Return JSON:
+{
+  "facts": [
+    {
+      "entity_mention": "exact entity name from the message",
+      "fact_key": "semantic category (age, location, employer, etc.)",
+      "fact_text": "human-readable fact statement",
+      "confidence": 0.0-1.0,
+      "supersedes_key": "fact_key of the old fact this replaces, if any"
+    }
+  ]
+}
+
+If no standalone facts are found, return an empty list.

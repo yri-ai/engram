@@ -1,5 +1,10 @@
 """Application configuration via environment variables."""
 
+import hashlib
+from pathlib import Path
+from typing import Any
+
+from jinja2 import Environment, FileSystemLoader, Template
 from pydantic_settings import BaseSettings
 
 
@@ -23,6 +28,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.1
+    llm_provider: str = "openai"
 
     # Embedding
     embedding_model: str = "text-embedding-3-small"
@@ -32,6 +38,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+
+    # Prompt Config
+    prompt_dir: str = "config/prompts"
 
     # Decay Rates (Open Question #5: Configurable decay rates)
     decay_preset: str = "balanced"  # balanced | fast | slow
@@ -66,3 +75,33 @@ class Settings(BaseSettings):
             return base_rates
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+settings = Settings()
+
+
+class ConfigService:
+    """Service for managing templates and dynamic configuration."""
+
+    def __init__(self, prompt_dir: str | None = None) -> None:
+        self.prompt_dir = Path(prompt_dir or settings.prompt_dir)
+        # Ensure directory exists for FileSystemLoader
+        self.prompt_dir.mkdir(parents=True, exist_ok=True)
+        self.env = Environment(loader=FileSystemLoader(str(self.prompt_dir)))
+
+    def get_template(self, name: str) -> Template:
+        """Get a Jinja2 template by name."""
+        return self.env.get_template(name)
+
+    def get_template_sha256(self, name: str) -> str:
+        """Calculate SHA256 of the template file for version tracking."""
+        path = self.prompt_dir / name
+        if not path.exists():
+            return ""
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+
+    def render_prompt(self, template_name: str, **kwargs: Any) -> str:
+        """Render a prompt template with provided context."""
+        template = self.get_template(template_name)
+        return template.render(**kwargs)

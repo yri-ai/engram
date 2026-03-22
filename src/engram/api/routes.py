@@ -208,6 +208,7 @@ async def get_relationships(
             "recorded_from": r.recorded_from.isoformat(),
             "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
             "version": r.version,
+            "structured_evidence": [e.model_dump(mode="json") for e in r.structured_evidence],
         }
         for r in relationships
     ]
@@ -288,6 +289,9 @@ async def point_in_time_query(
                     "recorded_from": r.recorded_from.isoformat(),
                     "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
                     "version": r.version,
+                    "structured_evidence": [
+                        e.model_dump(mode="json") for e in r.structured_evidence
+                    ],
                 }
                 for r in world_state
             ],
@@ -303,6 +307,9 @@ async def point_in_time_query(
                     "recorded_from": r.recorded_from.isoformat(),
                     "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
                     "version": r.version,
+                    "structured_evidence": [
+                        e.model_dump(mode="json") for e in r.structured_evidence
+                    ],
                 }
                 for r in knowledge
             ],
@@ -328,6 +335,7 @@ async def point_in_time_query(
             "recorded_from": r.recorded_from.isoformat(),
             "recorded_to": r.recorded_to.isoformat() if r.recorded_to else None,
             "version": r.version,
+            "structured_evidence": [e.model_dump(mode="json") for e in r.structured_evidence],
         }
         for r in relationships
     ]
@@ -501,3 +509,60 @@ async def merge_entities(
         "status": "merged",
         "message": f"Merged {duplicate_id} into {entity_id}",
     }
+
+
+@router.get("/entities/{entity_id}/facts")
+async def get_entity_facts(
+    entity_id: str,
+    tenant_id: str = Query("default"),
+    fact_key: str | None = Query(None),
+    store: StoreDep = Depends(get_store),  # noqa: B008
+) -> list[dict]:
+    """Get facts about an entity.
+
+    Args:
+        entity_id: Entity identifier
+        tenant_id: Tenant identifier
+        fact_key: Optional fact key filter (e.g., "age", "employer")
+        store: Graph store
+
+    Returns:
+        List of facts for the entity
+    """
+    facts = await store.get_facts(tenant_id, entity_id, fact_key=fact_key)
+    return [f.model_dump(mode="json") for f in facts]
+
+
+@router.get("/entities/{entity_id}/commitments")
+async def get_commitments(
+    entity_id: str,
+    tenant_id: str = Query("default"),
+    store: StoreDep = Depends(get_store),  # noqa: B008
+) -> list[dict]:
+    """Get active commitments for an entity.
+
+    Args:
+        entity_id: Entity identifier
+        tenant_id: Tenant identifier
+        store: Graph store
+
+    Returns:
+        List of active commitments
+    """
+    commitments = await store.get_commitments(
+        tenant_id=tenant_id,
+        entity_id=entity_id,
+    )
+
+    return [
+        {
+            "id": c.id,
+            "entity_id": c.entity_id,
+            "text": c.text,
+            "status": c.status.value,
+            "created_at": c.created_at.isoformat(),
+            "target_date": c.target_date.isoformat() if c.target_date else None,
+            "confidence": c.confidence,
+        }
+        for c in commitments
+    ]

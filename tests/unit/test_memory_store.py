@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from engram.models.entity import Entity, EntityType
+from engram.models.fact import Fact, FactStatus
 from engram.models.relationship import Relationship, RelationshipType
 from engram.storage.memory import MemoryStore
 
@@ -386,3 +387,79 @@ class TestMemoryStoreTemporalQueries:
         results = await store.query_evolution("t1", "kendra", target_name="nike")
         assert len(results) == 1
         assert results[0].target_id.endswith("nike")
+
+
+class TestMemoryStoreFacts:
+    async def test_save_and_get_facts(self, store):
+        f = Fact(
+            id="t1:fact:msg1:0",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="msg1",
+            entity_id="t1:c1:PERSON:alice",
+            fact_key="age",
+            fact_text="Alice is 32",
+            confidence=0.9,
+        )
+        await store.save_fact(f)
+        facts = await store.get_facts("t1", "t1:c1:PERSON:alice")
+        assert len(facts) == 1
+        assert facts[0].fact_text == "Alice is 32"
+
+    async def test_get_facts_by_key(self, store):
+        f1 = Fact(
+            id="t1:fact:m1:0",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="m1",
+            entity_id="e1",
+            fact_key="age",
+            fact_text="Alice is 32",
+            confidence=0.9,
+        )
+        f2 = Fact(
+            id="t1:fact:m1:1",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="m1",
+            entity_id="e1",
+            fact_key="location",
+            fact_text="Alice lives in NYC",
+            confidence=0.8,
+        )
+        await store.save_fact(f1)
+        await store.save_fact(f2)
+        age_facts = await store.get_facts("t1", "e1", fact_key="age")
+        assert len(age_facts) == 1
+        assert age_facts[0].fact_key == "age"
+
+    async def test_supersede_fact(self, store):
+        old = Fact(
+            id="t1:fact:m1:0",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="m1",
+            entity_id="e1",
+            fact_key="age",
+            fact_text="Alice is 32",
+            confidence=0.9,
+        )
+        await store.save_fact(old)
+
+        new = Fact(
+            id="t1:fact:m2:0",
+            tenant_id="t1",
+            conversation_id="c1",
+            message_id="m2",
+            entity_id="e1",
+            fact_key="age",
+            fact_text="Alice is 33 now",
+            confidence=1.0,
+            supersedes_fact_id="t1:fact:m1:0",
+        )
+        result = await store.supersede_fact("t1:fact:m1:0", new)
+
+        assert result.status == FactStatus.ACTIVE
+        all_facts = await store.get_facts("t1", "e1", active_only=False)
+        old_fact = next(f for f in all_facts if f.id == "t1:fact:m1:0")
+        assert old_fact.status == FactStatus.SUPERSEDED

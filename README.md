@@ -1,8 +1,8 @@
 # Engram
 
-**The only OSS temporal knowledge graph built for conversations, not documents.**
+**Temporal context graph for AI — not memory, context.**
 
-Engram creates structured, persistent memory for AI systems by extracting entities and relationships from conversations, tracking how they evolve over time, and enabling temporal reasoning.
+Memory is recall. Context is understanding *what changed, when, and why it matters now*. Engram extracts structured knowledge from conversations — entities, relationships, facts, commitments — tracks how they evolve bitemporally, and gives AI systems the full picture, not just a snapshot.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -12,42 +12,42 @@ Engram creates structured, persistent memory for AI systems by extracting entiti
 
 ## The Problem
 
-Existing AI memory systems fall short:
+"AI memory" systems store what was said. They don't understand what it *means* now:
 
-- **Mem0, GraphRAG, LightRAG**: Focus on document chunks, not relationships. They can't track *how* knowledge evolves over time.
-- **Zep/Graphiti**: Had temporal knowledge graphs but went closed-source. The OSS space is now empty.
-- **Vector databases**: Great for similarity search, but can't answer "What did we know about X on date Y?" or "How did this relationship change?"
+- **Mem0, GraphRAG, LightRAG**: Chunk documents and retrieve by similarity. Can't answer "How did X change?" or "What did we know on date Y?"
+- **Zep/Graphiti**: Built the right thing (bitemporal graphs) but went closed-source. The OSS space is empty.
+- **Vector databases**: Good at "find similar things." Useless at "what evolved, what contradicts, what supersedes."
 
-## The Solution
+## What Engram Does
 
-Engram is conversation-native:
+Engram builds a living context graph from conversations:
 
-- **Extract** → Automatically identifies entities (people, preferences, goals) and relationships from conversations
-- **Connect** → Builds a knowledge graph with versioned, temporal relationships
-- **Reason** → Supports point-in-time queries, relationship evolution tracking, and confidence decay
+- **Extract** → Entities, relationships, standalone facts, commitments, and narrative summaries — all from natural conversation
+- **Connect** → Bitemporal knowledge graph where every edge tracks *when it was true* and *when we learned it*
+- **Reason** → Point-in-time queries, evolution tracking, confidence decay, fact supersession
 
-### What Makes It Different
+### Context, Not Memory
 
-**Bitemporal relationship versioning** — the secret sauce:
+Memory systems store snapshots. Engram tracks *evolution*:
 
 ```
-Example: Tracking evolving preferences
+Message 1: "Kendra loves Nike running shoes"
+  → Entity: Kendra (PERSON)
+  → Relationship: (Kendra)-[:prefers]->(Nike)
+  → Fact: "Kendra's preferred brand is Nike" (key: brand)
 
-Week 1: "Kendra loves Nike running shoes"
-→ Creates: (Kendra)-[:prefers {valid_from: W1, valid_to: null}]->(Nike)
+Message 2: "Kendra switched to Hoka — better arch support"
+  → Relationship: terminates (Kendra)-[:prefers]->(Nike), creates ->(Hoka)
+  → Fact: supersedes old brand fact with "Kendra's preferred brand is Hoka"
+  → Summary: shift from Nike loyalty to Hoka based on arch support
+  → Snapshot: delta shows 1 superseded fact, 1 new relationship
 
-Week 3: "Kendra switched to Adidas, Nike quality dropped"
-→ Terminates old: (Kendra)-[:prefers {valid_to: W3}]->(Nike)
-→ Creates new: (Kendra)-[:prefers {valid_from: W3}]->(Adidas)
-
-Query "What did Kendra prefer in Week 2?"
-→ Returns: Nike (because it was valid from W1 to W3)
-
-Query "What does Kendra prefer now?"
-→ Returns: Adidas (current preference)
+Query "What did Kendra prefer in Week 2?" → Nike
+Query "What does Kendra prefer now?" → Hoka
+Query "What changed?" → Brand preference shifted, evidence: arch support
 ```
 
-**This pattern is proven** — built in production for a coaching platform where it tracks coach-client relationships, extracts insights from conversations, and surfaces relevant context over time.
+A memory system returns "Hoka." Engram returns *why it changed, when, and what it replaced*.
 
 ---
 
@@ -122,47 +122,43 @@ Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interacti
 
 ---
 
-## Core Concepts
+## What Gets Extracted
 
-### 1. Entities
+Engram's 7-stage pipeline extracts five artifact types from every message:
 
-Conversation-native entity types:
+### Entities
+Conversation-native types: **Person**, **Preference**, **Goal**, **Concept**, **Event**, **Topic**. Each with vector embeddings for deduplication and deterministic IDs for idempotent processing.
 
-- **Person**: Individuals in conversations
-- **Preference**: Likes, dislikes, favorites (high decay rate)
-- **Goal**: Objectives, intentions
-- **Concept**: Abstract ideas, topics
-- **Event**: Meetings, deadlines, milestones
-- **Topic**: Conversation subjects
+### Relationships (Bitemporal)
+Edges between entities with full temporal versioning:
+- `valid_from` / `valid_to` — when the relationship was true in the world
+- `recorded_from` / `recorded_to` — when we learned about it
+- Exclusivity policies (e.g., `prefers` and `avoids` are mutually exclusive)
+- Confidence decay over time, reinforcement on re-mention
 
-### 2. Relationships (Versioned)
+### Facts
+Standalone knowledge claims about entities — things that aren't relationships between two entities. "Alice is 32", "Bob works at Acme", "The deadline is March 30th." Facts have supersession chains: when new information contradicts old, the old fact is marked `SUPERSEDED` and linked to its replacement.
 
-Every relationship has:
+### Commitments
+Future-oriented actions extracted from conversation: "I'll do X by Friday." Tracked with status (active, completed, cancelled, missed) and target dates.
 
-- `valid_from` — when the relationship became true
-- `valid_to` — when it stopped being true (NULL = still active)
-- `created_at` — when we learned about it
-- `confidence` — 0.0-1.0 (decays over time if not reinforced)
+### Conversation Summaries
+Narrative arc per message: opening state, key shift, closing state. Captures *what happened* at a high level, inspired by temporal-relationships' SessionArc pattern.
 
-This **bitemporal model** lets you query:
-- **Current state**: "What relationships are active now?"
-- **Historical state**: "What did we know on date X?"
-- **Evolution**: "How did this relationship change over time?"
+---
 
-### 3. Temporal Reasoning
+## Temporal Reasoning
 
-**Decay function**: Relationships lose confidence over time if not reinforced.
+**Confidence decay**: Knowledge fades if not reinforced.
 
-```python
-# Preferences decay fast (0.05/day)
-After 30 days: confidence drops from 1.0 → 0.22
-After 60 days: confidence floors at 0.1
-
-# Social relationships decay slowly (0.005/day)
-After 30 days: confidence drops from 1.0 → 0.86
+```
+Preferences decay fast (0.05/day): 1.0 → 0.22 after 30 days
+Social connections decay slowly (0.005/day): 1.0 → 0.86 after 30 days
 ```
 
-**Reinforcement**: When a relationship is re-mentioned, confidence increases.
+**Point-in-time queries**: "What was true on date X?" — valid-time, record-time, or bitemporal.
+
+**Evolution tracking**: Full version history of every relationship and fact, with supersession chains.
 
 ---
 
@@ -170,14 +166,14 @@ After 30 days: confidence drops from 1.0 → 0.86
 
 | Capability | Engram | Mem0 | LightRAG | GraphRAG |
 |------------|--------|------|----------|----------|
-| Bitemporal validity/knowledge timelines | ✅ Built-in (`valid_*` + `recorded_*`) | ❌ snapshot only | ❌ snapshot only | ⚠️ record time only |
-| Conversation-native entity/relationship schema | ✅ People, preferences, decay-aware exclusivity | ⚠️ metadata only | ❌ chunk-based | ❌ document graph |
-| Confidence decay + reinforcement | ✅ configurable per type | ❌ | ❌ | ❌ |
-| Idempotent ingestion with dedup + retries | ✅ Redis/InMemory dedup service | ⚠️ manual | ⚠️ manual | ⚠️ manual |
-| Point-in-time + evolution queries | ✅ `/query/point-in-time`, `/query/evolution` | ❌ | ❌ | ⚠️ limited |
+| Bitemporal timelines (valid + record time) | ✅ 4-column model | ❌ snapshot | ❌ snapshot | ⚠️ record only |
+| Standalone facts with supersession | ✅ fact chains | ❌ | ❌ | ❌ |
+| Conversation-native schema | ✅ entities, relationships, facts, commitments | ⚠️ metadata | ❌ chunk-based | ❌ document graph |
+| Confidence decay + reinforcement | ✅ per-type configurable | ❌ | ❌ | ❌ |
+| Extraction context awareness | ✅ prior facts + relationships fed to LLM | ❌ | ❌ | ❌ |
+| Point-in-time + evolution queries | ✅ API endpoints | ❌ | ❌ | ⚠️ limited |
+| Idempotent ingestion | ✅ Redis dedup | ⚠️ manual | ⚠️ manual | ⚠️ manual |
 | OSS license | ✅ MIT | ⚠️ custom | ✅ Apache-2.0 | ✅ MIT |
-
-⚠️ = partial/DIY implementations according to the latest public docs.
 
 ---
 
@@ -324,22 +320,15 @@ Engram's architecture is described in detail in [ARCHITECTURE.md](ARCHITECTURE.m
 - **LLM**: LiteLLM (multi-provider: OpenAI, Anthropic, Ollama)
 - **Embeddings**: text-embedding-3-small (or nomic-embed-text for local)
 
-### Extraction Pipeline
+### Extraction Pipeline (7 stages)
 
-1. **Entity Extraction** → LLM identifies entities and canonical forms
-2. **Relationship Inference** → LLM extracts relationships with confidence scores
-3. **Conflict Resolution** → Temporal versioning handles contradictions
-
-### Temporal Model
-
-**Bitemporal property graph**:
-- `valid_from` / `valid_to` → when fact was true (valid-time)
-- `created_at` → when fact was recorded (transaction-time)
-
-This enables:
-- Point-in-time queries ("as of date X")
-- Relationship evolution tracking
-- Backdated corrections
+1. **Entity Extraction** → LLM identifies entities with rich prior context (existing facts + relationships)
+2. **Relationship Inference** → LLM extracts relationships with confidence scores and structured evidence
+3. **Conflict Resolution** → Rule-based exclusivity enforcement and temporal versioning
+4. **Fact Extraction** → LLM extracts standalone facts with supersession detection
+5. **Commitment Extraction** → LLM identifies future-oriented actions and intentions
+6. **Conversation Summary** → LLM generates narrative arc (opening → shift → closing)
+7. **Snapshot** → Captures conversation state and what changed (delta tracking)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for full schema, API design, and implementation details.
 
@@ -349,21 +338,17 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full schema, API design, and implemen
 
 ### v0.1.0 — MVP (Current)
 
-**Goal**: Working end-to-end demo, runs in < 5 minutes
-
-- ✅ Core graph schema (entities, versioned relationships)
-- ✅ Entity extraction (LLM-based, multi-provider)
-- ✅ Relationship inference with temporal markers
-- ✅ Conflict resolution & versioning
-- ✅ Decay function (exponential, configurable rates)
-- ✅ Point-in-time queries
-- ✅ Relationship evolution tracking
-- ✅ REST API (8 endpoints)
-- ✅ CLI tools (`engram init`, `ingest`, `query`, `export`)
-- ✅ Basic web UI (graph visualization, entity browser)
-- ✅ Docker Compose deployment
-
-**Timeline**: 4-6 weeks
+- ✅ Core graph schema (entities, bitemporal relationships)
+- ✅ 7-stage extraction pipeline (entities, relationships, facts, commitments, summaries)
+- ✅ Context-aware extraction (prior facts + relationships fed to LLM)
+- ✅ Fact model with supersession chains
+- ✅ Conversation snapshots with delta tracking
+- ✅ Conflict resolution & exclusivity policies
+- ✅ Confidence decay + reinforcement
+- ✅ Point-in-time and evolution queries
+- ✅ REST API (10 endpoints including facts)
+- ✅ CLI tools (`engram serve`, `ingest`, `query`)
+- ✅ Docker Compose deployment (Neo4j + Redis + API)
 
 ### v0.2 — Multi-Tenancy (Week 8)
 
@@ -513,7 +498,7 @@ If you use Engram in research or production, please cite:
 ```bibtex
 @software{engram2026,
   author = {Your Name},
-  title = {Engram: Temporal Knowledge Graphs for AI Memory},
+  title = {Engram: Temporal Context Graph for AI},
   year = {2026},
   url = {https://github.com/yourusername/engram},
   license = {MIT}
@@ -535,12 +520,8 @@ Built with: Neo4j, FastAPI, LiteLLM, Pydantic, and the amazing OSS community.
 
 ## Status
 
-**Current**: Design & Architecture Phase  
-**Next**: Implementation (v0.1.0)  
-**Timeline**: MVP in 4-6 weeks
-
-⭐ **Star this repo** to follow development and support the project!
+**Current**: v0.1.0 MVP — actively developing on `gemini-1` branch
 
 ---
 
-**Engram** — because AI systems should remember what they learned, when they learned it, and how it changed.
+**Engram** — context, not memory. What changed, when, and why it matters now.

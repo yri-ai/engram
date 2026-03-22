@@ -8,8 +8,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from engram.models.commitment import Commitment
     from engram.models.entity import Entity, EntityType
+    from engram.models.fact import Fact
     from engram.models.relationship import Relationship, RelationshipType
+    from engram.models.run import ExtractionRun
 
 
 class GraphStore(ABC):
@@ -187,4 +190,52 @@ class GraphStore(ABC):
         limit: int = 20,
     ) -> list[Entity]:
         """Get recently mentioned entities (for LLM context building)."""
+        ...
+
+    # --- Run & Commitment Operations ---
+
+    @abstractmethod
+    async def save_run(self, run: ExtractionRun) -> ExtractionRun:
+        """Save or update extraction run metadata."""
+        ...
+
+    @abstractmethod
+    async def save_commitment(self, commitment: Commitment) -> Commitment:
+        """Save a commitment (intention/action)."""
+        ...
+
+    @abstractmethod
+    async def get_commitments(
+        self,
+        tenant_id: str,
+        entity_id: str,
+    ) -> list[Commitment]:
+        """Get active commitments for an entity."""
+        ...
+
+    # --- Fact Operations ---
+
+    @abstractmethod
+    async def save_fact(self, fact: Fact) -> Fact:
+        """Save a fact (knowledge claim about an entity)."""
+        ...
+
+    @abstractmethod
+    async def get_facts(
+        self,
+        tenant_id: str,
+        entity_id: str,
+        fact_key: str | None = None,
+        active_only: bool = True,
+    ) -> list[Fact]:
+        """Get facts for an entity, optionally filtered by key."""
+        ...
+
+    @abstractmethod
+    async def supersede_fact(
+        self,
+        old_fact_id: str,
+        new_fact: Fact,
+    ) -> Fact:
+        """Mark old fact as superseded and save the new one."""
         ...

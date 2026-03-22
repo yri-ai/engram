@@ -3,6 +3,7 @@
 import re
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -30,7 +31,8 @@ class Entity(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_mentioned: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source_messages: list[str] = Field(default_factory=list)
-    metadata: dict = Field(default_factory=dict)
+    extraction_run_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @staticmethod
     def build_id(

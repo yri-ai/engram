@@ -58,5 +58,5 @@ redis_data/
 .DS_Store
 Thumbs.db
 
-# uv
-uv.lock
+# Local credentials
+leo@butter

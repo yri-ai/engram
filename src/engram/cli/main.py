@@ -306,7 +306,9 @@ def query(
     conversation_id: str | None = typer.Option("default", help="Conversation ID filter"),
     api_url: str = typer.Option("http://localhost:8000", help="Engram API base URL"),
     timeout: float = typer.Option(30.0, help="HTTP timeout in seconds"),
-    mode: str = typer.Option("world_state", help="Temporal mode: world_state, knowledge, bitemporal"),
+    mode: str = typer.Option(
+        "world_state", help="Temporal mode: world_state, knowledge, bitemporal"
+    ),
 ) -> None:
     """Query entity state and relationships.
 
@@ -383,7 +385,9 @@ def _resolve_entity(
     return entity_record
 
 
-def _render_relationships(entity_record: dict[str, Any], relationships: list[RelationshipRow]) -> None:
+def _render_relationships(
+    entity_record: dict[str, Any], relationships: list[RelationshipRow]
+) -> None:
     if not relationships:
         console.print("[yellow]No active relationships found.[/yellow]")
         return
@@ -412,9 +416,13 @@ def _render_relationships(entity_record: dict[str, Any], relationships: list[Rel
 def _render_temporal_result(result: Any, mode: str) -> None:
     if mode == "bitemporal" and isinstance(result, dict):
         console.print("[bold blue]World State[/bold blue]")
-        _render_relationships({"canonical_name": "world_state"}, _rows_from_raw(result.get("world_state", [])))
+        _render_relationships(
+            {"canonical_name": "world_state"}, _rows_from_raw(result.get("world_state", []))
+        )
         console.print("\n[bold blue]Knowledge State[/bold blue]")
-        _render_relationships({"canonical_name": "knowledge"}, _rows_from_raw(result.get("knowledge", [])))
+        _render_relationships(
+            {"canonical_name": "knowledge"}, _rows_from_raw(result.get("knowledge", []))
+        )
         return
 
     if isinstance(result, list):

@@ -1,0 +1,55 @@
+You are extracting entities from a conversation message for a knowledge graph.
+
+Message: "{{ message_text }}"
+Timestamp: {{ timestamp }}
+Speaker: {{ speaker }}
+
+Prior knowledge about this conversation:
+
+Entities mentioned recently:
+{{ context.entities | tojson(indent=2) if context.entities else "(none)" }}
+
+{% if context.relationships %}
+Active relationships:
+{{ context.relationships | tojson(indent=2) }}
+{% endif %}
+
+Use this prior knowledge to:
+- Resolve pronouns and ambiguous references to known entities
+- Recognize when new information supersedes what was known before
+- Avoid creating duplicate entities for known individuals/concepts
+
+Extract entities following these rules:
+
+1. Entity Types:
+   - PERSON: Named individuals (participants or mentioned people)
+   - PREFERENCE: Things someone likes/dislikes (brands, foods, activities)
+   - GOAL: Stated objectives or intentions
+   - CONCEPT: Abstract ideas or topics being discussed
+   - EVENT: Specific time-bound occurrences (meetings, deadlines, races)
+   - TOPIC: Conversation subjects or themes
+
+2. Canonicalization:
+   - Normalize names: "Kendra M" -> "Kendra Martinez" (use context)
+   - Resolve pronouns: "she" -> match to recent Person entity
+   - Handle variations: "running shoes" = "running shoe" (singular form)
+   - Merge synonyms: "marathon" = "marathon race"
+
+3. Confidence:
+   - Explicit mention: confidence = 1.0
+   - Pronoun resolution: confidence = 0.8
+   - Inferred from context: confidence = 0.6
+
+Return JSON:
+{
+  "entities": [
+    {
+      "name": "exact text from message",
+      "canonical": "normalized canonical name",
+      "type": "PERSON|PREFERENCE|GOAL|CONCEPT|EVENT|TOPIC",
+      "confidence": 0.0-1.0
+    }
+  ]
+}
+
+Only extract entities that are clearly present. Do not infer entities not mentioned.

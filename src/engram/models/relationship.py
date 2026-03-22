@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,15 @@ class RelationshipType(StrEnum):
     RELATES_TO = "relates_to"
 
 
+class Evidence(BaseModel):
+    """Structured evidence for a relationship."""
+
+    message_id: str
+    text: str  # Exact quote or snippet
+    context: str | None = None  # Surrounding text for context
+    observed_at: datetime
+
+
 class Relationship(BaseModel):
     """A bitemporal edge in the knowledge graph."""
 
@@ -24,6 +34,7 @@ class Relationship(BaseModel):
     conversation_id: str
     group_id: str | None = None
     message_id: str
+    extraction_run_id: str | None = None
 
     # Endpoints
     source_id: str
@@ -32,7 +43,8 @@ class Relationship(BaseModel):
     # Semantics
     rel_type: RelationshipType
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence: str = ""
+    evidence: str = ""  # Legacy simple evidence
+    structured_evidence: list[Evidence] = Field(default_factory=list)
 
     # Bitemporal (4 time columns)
     valid_from: datetime
@@ -44,7 +56,7 @@ class Relationship(BaseModel):
     version: int = 1
     supersedes: str | None = None
 
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def is_active(self) -> bool:
