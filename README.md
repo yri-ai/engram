@@ -64,7 +64,7 @@ Get Engram running in < 5 minutes:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/engram.git
+git clone https://github.com/yri-ai/engram.git
 cd engram
 
 # Configure environment
@@ -403,8 +403,8 @@ Engram is in active development. Contributions are welcome!
 
 **How to contribute**:
 
-1. **Issues**: Found a bug? Have a feature request? [Open an issue](https://github.com/yourusername/engram/issues)
-2. **Discussions**: Questions or ideas? [Start a discussion](https://github.com/yourusername/engram/discussions)
+1. **Issues**: Found a bug? Have a feature request? [Open an issue](https://github.com/yri-ai/engram/issues)
+2. **Discussions**: Questions or ideas? [Start a discussion](https://github.com/yri-ai/engram/discussions)
 3. **Pull Requests**: Want to contribute code? Fork, branch, and submit a PR
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding standards, and the full PR checklist.
@@ -497,10 +497,10 @@ If you use Engram in research or production, please cite:
 
 ```bibtex
 @software{engram2026,
-  author = {Your Name},
+  author = {Leonard Langsdorf},
   title = {Engram: Temporal Context Graph for AI},
   year = {2026},
-  url = {https://github.com/yourusername/engram},
+  url = {https://github.com/yri-ai/engram},
   license = {MIT}
 }
 ```
@@ -520,7 +520,7 @@ Built with: Neo4j, FastAPI, LiteLLM, Pydantic, and the amazing OSS community.
 
 ## Status
 
-**Current**: v0.1.0 MVP — actively developing on `gemini-1` branch
+**Current**: v0.1.0 MVP — actively developing
 
 ---
 

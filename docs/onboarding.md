@@ -26,7 +26,7 @@ The script checks `/health`, ingests `examples/coaching-demo.json`, and runs a q
 ### Start Services
 
 ```bash
-git clone https://github.com/yourusername/engram.git
+git clone https://github.com/yri-ai/engram.git
 cd engram
 
 cp .env.example .env

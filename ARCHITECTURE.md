@@ -1552,7 +1552,7 @@ def get_current_relationships(
 
 ### 4.2 MIT Licensed Core (`engram-core`)
 
-**Repository**: `github.com/yourusername/engram`
+**Repository**: `github.com/yri-ai/engram`
 
 **Components**:
 
@@ -2203,7 +2203,7 @@ volumes:
 
 **Quickstart**:
 ```bash
-git clone https://github.com/yourusername/engram
+git clone https://github.com/yri-ai/engram
 cd engram
 cp .env.example .env
 # Add your OPENAI_API_KEY to .env
