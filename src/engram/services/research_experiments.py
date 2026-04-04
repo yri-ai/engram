@@ -153,6 +153,9 @@ def run_thin_slice_experiment(
     output_path: Path,
     branches: list[str],
 ) -> dict[str, object]:
+    if not branches:
+        raise ValueError("branches must be a non-empty list")
+
     baseline = _read_ndjson(baseline_path)
     reduced = _read_ndjson(reduced_path)
     distractor = _read_ndjson(distractor_path)

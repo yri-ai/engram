@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.ref_name }}
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +28,14 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+      - name: Validate manual deploy target matches branch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event.inputs.target }}" != "${{ github.ref_name }}" ]; then
+            echo "workflow_dispatch target must match ref_name"
+            echo "target=${{ github.event.inputs.target }} ref=${{ github.ref_name }}"
+            exit 1
+          fi
       - name: Verify unit + e2e tests
         run: uv run --extra dev pytest tests/unit tests/e2e -q
 

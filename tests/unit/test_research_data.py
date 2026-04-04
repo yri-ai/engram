@@ -227,3 +227,19 @@ def test_build_research_fixtures_writes_three_profiles(tmp_path: Path) -> None:
     assert distractor_record["profile"] == "distractor"
     assert reduced_record["metadata"] == {"baz": "qux"}
     assert distractor_record["distractor"] is True
+
+
+def test_build_research_fixtures_rejects_negative_per_split(tmp_path: Path) -> None:
+    scaffold_path = tmp_path / "research_scaffold.ndjson"
+    scaffold_path.write_text("", encoding="utf-8")
+
+    split_path = tmp_path / "research_splits.json"
+    split_path.write_text(json.dumps({"membership": {}}), encoding="utf-8")
+
+    out_dir = tmp_path / "fixtures"
+    try:
+        build_research_fixtures(scaffold_path, split_path, out_dir, per_split=-1)
+    except ValueError as exc:
+        assert str(exc) == "per_split must be a non-negative integer"
+    else:
+        raise AssertionError("Expected ValueError for per_split=-1")

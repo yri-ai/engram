@@ -78,6 +78,24 @@ def test_run_thin_slice_experiment_writes_ranking_samples(tmp_path: Path) -> Non
         assert set(sample["scores"].keys()) == {"stability", "distress", "refi"}
 
 
+def test_run_thin_slice_experiment_rejects_empty_branches(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.ndjson"
+    reduced = tmp_path / "reduced_context.ndjson"
+    distractor = tmp_path / "distractor.ndjson"
+
+    _write_ndjson(baseline, [{"record_id": "r1", "source": "edgar"}])
+    _write_ndjson(reduced, [{"record_id": "r1", "source": "edgar"}])
+    _write_ndjson(distractor, [{"record_id": "r1", "source": "edgar"}])
+
+    out_path = tmp_path / "results" / "thin_slice_v0.json"
+    try:
+        run_thin_slice_experiment(baseline, reduced, distractor, out_path, branches=[])
+    except ValueError as exc:
+        assert str(exc) == "branches must be a non-empty list"
+    else:
+        raise AssertionError("Expected ValueError for empty branches")
+
+
 def test_build_calibration_report_from_experiment_samples(tmp_path: Path) -> None:
     result_path = tmp_path / "thin_slice_v0.json"
     result_payload = {

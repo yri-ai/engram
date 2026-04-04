@@ -10,14 +10,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _sum_file_bytes(root: Path) -> int:
-    total = 0
-    for path in root.rglob("*"):
-        if path.is_file():
-            total += path.stat().st_size
-    return total
-
-
 def _extract_year(name: str) -> str | None:
     match = re.search(r"(20\d{2})", name)
     return match.group(1) if match else None
@@ -46,6 +38,7 @@ def build_snapshot_manifest(data_dir: Path, output_path: Path) -> dict[str, obje
     ginnie_zips = sorted(ginnie_root.rglob("*.zip")) if ginnie_root.exists() else []
     edgar_xml = sorted(edgar_root.rglob("*.xml")) if edgar_root.exists() else []
     edgar_meta = sorted(edgar_root.rglob("*.meta.json")) if edgar_root.exists() else []
+    tracked_paths = [*fannie_zips, *ginnie_zips, *edgar_xml, *edgar_meta]
 
     fannie_years = sorted({year for path in fannie_zips if (year := _extract_year(path.name))})
     ginnie_periods = sorted(
@@ -101,7 +94,7 @@ def build_snapshot_manifest(data_dir: Path, output_path: Path) -> dict[str, obje
         },
         "totals": {
             "files": len(fannie_zips) + len(ginnie_zips) + len(edgar_xml) + len(edgar_meta),
-            "bytes": _sum_file_bytes(data_dir),
+            "bytes": sum(path.stat().st_size for path in tracked_paths),
             "date_range": [date_start, date_end] if date_start and date_end else None,
         },
     }
@@ -288,6 +281,9 @@ def build_research_fixtures(
     output_dir: Path,
     per_split: int = 200,
 ) -> dict[str, Path]:
+    if not isinstance(per_split, int) or isinstance(per_split, bool) or per_split < 0:
+        raise ValueError("per_split must be a non-negative integer")
+
     split_manifest = json.loads(split_manifest_path.read_text(encoding="utf-8"))
     membership_raw = split_manifest.get("membership")
     membership: dict[str, str] = {}
