@@ -112,3 +112,16 @@ def test_build_calibration_report_from_experiment_samples(tmp_path: Path) -> Non
     assert 0.0 <= report["overall_accuracy"] <= 1.0
     assert len(report["bins"]) == 5
     assert any(b["count"] > 0 for b in report["bins"])
+
+
+def test_build_calibration_report_rejects_invalid_bin_count(tmp_path: Path) -> None:
+    result_path = tmp_path / "thin_slice_v0.json"
+    result_path.write_text(json.dumps({"samples": []}), encoding="utf-8")
+
+    out_path = tmp_path / "calibration_report.json"
+    try:
+        build_calibration_report(result_path, out_path, bins=0)
+    except ValueError as exc:
+        assert str(exc) == "bins must be >= 1"
+    else:
+        raise AssertionError("Expected ValueError for bins=0")

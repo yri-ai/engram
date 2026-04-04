@@ -38,6 +38,18 @@ HEADERS = {
 RATE_LIMIT_INTERVAL = 0.12
 _last_request_time = 0.0
 MAX_RETRIES = 5
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _retry_delay(attempt: int, retry_after_header: str | None) -> float:
+    if retry_after_header:
+        try:
+            retry_after = float(retry_after_header)
+            if retry_after > 0:
+                return retry_after
+        except ValueError:
+            pass
+    return 0.5 * (2**attempt)
 
 
 async def rate_limited_get(client: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
@@ -56,13 +68,29 @@ async def rate_limited_get(client: httpx.AsyncClient, url: str, **kwargs: object
         except (httpx.ReadError, httpx.ReadTimeout, httpx.ConnectError, httpx.ConnectTimeout) as e:
             if attempt + 1 >= MAX_RETRIES:
                 raise
-            backoff = 0.5 * (2**attempt)
+            backoff = _retry_delay(attempt, None)
             logger.warning(
                 "Transient network error on %s (attempt %d/%d): %s; retrying in %.1fs",
                 url,
                 attempt + 1,
                 MAX_RETRIES,
                 type(e).__name__,
+                backoff,
+            )
+            await asyncio.sleep(backoff)
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            retry_after = e.response.headers.get("Retry-After")
+            if status_code not in RETRYABLE_STATUS_CODES or attempt + 1 >= MAX_RETRIES:
+                raise
+
+            backoff = _retry_delay(attempt, retry_after)
+            logger.warning(
+                "Retryable HTTP status on %s (attempt %d/%d): %d; retrying in %.1fs",
+                url,
+                attempt + 1,
+                MAX_RETRIES,
+                status_code,
                 backoff,
             )
             await asyncio.sleep(backoff)
@@ -96,7 +124,7 @@ async def discover_cmbs_ciks(client: httpx.AsyncClient) -> dict[str, str]:
 
             for hit in hits:
                 src = hit.get("_source", {})
-                for cik, name in zip(src.get("ciks", []), src.get("display_names", [])):
+                for cik, name in zip(src.get("ciks", []), src.get("display_names", []), strict=False):
                     ciks[str(cik)] = name
 
             total = data.get("hits", {}).get("total", {})
@@ -125,7 +153,7 @@ async def get_absee_filings(
     dates = recent.get("filingDate", [])
 
     filings = []
-    for form, accession, date in zip(forms, accessions, dates):
+    for form, accession, date in zip(forms, accessions, dates, strict=False):
         if form not in ("ABS-EE", "ABS-EE/A"):
             continue
         if start_date and date < start_date:
@@ -149,9 +177,8 @@ async def find_ex102_filename(
     # index.xml uses <directory>/<item>/<name> with no namespace
     for item in root.iter("item"):
         name_el = item.find("name")
-        if name_el is not None and name_el.text:
-            if re.match(r".*102.*\.xml$", name_el.text, re.IGNORECASE):
-                return name_el.text
+        if name_el is not None and name_el.text and re.match(r".*102.*\.xml$", name_el.text, re.IGNORECASE):
+            return name_el.text
 
     return None
 

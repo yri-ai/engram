@@ -186,6 +186,9 @@ def build_calibration_report(
     output_path: Path,
     bins: int = 10,
 ) -> dict[str, object]:
+    if bins < 1:
+        raise ValueError("bins must be >= 1")
+
     payload = json.loads(experiment_result_path.read_text(encoding="utf-8"))
     samples_raw = payload.get("samples")
     samples = samples_raw if isinstance(samples_raw, list) else []

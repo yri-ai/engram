@@ -43,6 +43,18 @@ def test_build_snapshot_manifest_counts_and_sizes(tmp_path: Path) -> None:
     assert manifest["sources"]["edgar"]["xml_files"] == 1
     assert manifest["sources"]["edgar"]["meta_files"] == 1
     assert manifest["totals"]["bytes"] > 0
+    assert manifest["totals"]["date_range"] == ["2017-12-28", "2026-02-28"]
+
+
+def test_build_snapshot_manifest_uses_month_end_for_ginnie_range(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    _write_zip(data_dir / "ginnie" / "202602" / "monthlySFS_202602.zip")
+    _write_zip(data_dir / "ginnie" / "202604" / "monthlySFS_202604.zip")
+
+    out_path = tmp_path / "manifests" / "research_snapshot.json"
+    manifest = build_snapshot_manifest(data_dir, out_path)
+
+    assert manifest["totals"]["date_range"] == ["2026-02-01", "2026-04-30"]
 
 
 def test_build_normalized_scaffold_outputs_ndjson(tmp_path: Path) -> None:
@@ -80,6 +92,20 @@ def test_build_normalized_scaffold_outputs_ndjson(tmp_path: Path) -> None:
     edgar_record = next(r for r in records if r["source"] == "edgar")
     assert edgar_record["record_id"] == "0000950131-17-000939"
     assert edgar_record["event_date"] == "2017-12-28"
+
+
+def test_build_normalized_scaffold_extracts_ginnie_period_from_directory(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    _write_zip(data_dir / "ginnie" / "202602" / "disclosure_data_bulk.zip")
+
+    out_path = tmp_path / "normalized" / "research_scaffold.ndjson"
+    build_normalized_scaffold(data_dir, out_path)
+
+    records = [json.loads(line) for line in out_path.read_text(encoding="utf-8").strip().splitlines()]
+    assert len(records) == 1
+    assert records[0]["source"] == "ginnie"
+    assert records[0]["event_date"] == "2026-02-01"
+    assert records[0]["metadata"]["period"] == "202602"
 
 
 def test_build_time_split_manifest_counts(tmp_path: Path) -> None:
@@ -197,5 +223,5 @@ def test_build_research_fixtures_writes_three_profiles(tmp_path: Path) -> None:
     assert baseline_record["profile"] == "baseline"
     assert reduced_record["profile"] == "reduced_context"
     assert distractor_record["profile"] == "distractor"
-    assert reduced_record["metadata"] == {"foo": "bar"}
+    assert reduced_record["metadata"] == {"baz": "qux"}
     assert distractor_record["distractor"] is True

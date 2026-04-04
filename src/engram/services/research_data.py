@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from calendar import monthrange
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -23,7 +24,7 @@ def _extract_year(name: str) -> str | None:
 
 
 def _extract_yyyymm(name: str) -> str | None:
-    match = re.search(r"_(20\d{4})\.(zip|txt|csv)$", name)
+    match = re.search(r"(?<!\d)(20\d{2}(0[1-9]|1[0-2]))(?!\d)", name)
     return match.group(1) if match else None
 
 
@@ -51,7 +52,7 @@ def build_snapshot_manifest(data_dir: Path, output_path: Path) -> dict[str, obje
         {
             period
             for path in ginnie_zips
-            if (period := _extract_yyyymm(path.name) or _extract_year(path.parent.name))
+            if (period := _extract_yyyymm(path.name) or _extract_yyyymm(path.parent.name))
         }
     )
     edgar_dates = sorted({d for path in edgar_meta if (d := _read_meta_date(path))})
@@ -64,8 +65,13 @@ def build_snapshot_manifest(data_dir: Path, output_path: Path) -> dict[str, obje
         all_dates.append(f"{fannie_years[0]}-01-01")
         all_dates.append(f"{fannie_years[-1]}-12-31")
     if ginnie_periods:
-        all_dates.append(f"{ginnie_periods[0][:4]}-{ginnie_periods[0][4:]}-01")
-        all_dates.append(f"{ginnie_periods[-1][:4]}-{ginnie_periods[-1][4:]}-31")
+        start_period = ginnie_periods[0]
+        end_period = ginnie_periods[-1]
+        end_year = int(end_period[:4])
+        end_month = int(end_period[4:])
+        end_day = monthrange(end_year, end_month)[1]
+        all_dates.append(f"{start_period[:4]}-{start_period[4:]}-01")
+        all_dates.append(f"{end_period[:4]}-{end_period[4:]}-{end_day:02d}")
     all_dates.extend(edgar_dates)
 
     if all_dates:
@@ -156,7 +162,7 @@ def _fannie_records(fannie_root: Path) -> list[dict[str, object]]:
 def _ginnie_records(ginnie_root: Path) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     for path in sorted(ginnie_root.rglob("*.zip")):
-        period = _extract_yyyymm(path.name) or _extract_year(path.parent.name)
+        period = _extract_yyyymm(path.name) or _extract_yyyymm(path.parent.name)
         event_date = f"{period[:4]}-{period[4:]}-01" if period and len(period) == 6 else None
         records.append(
             {
@@ -284,7 +290,13 @@ def build_research_fixtures(
 ) -> dict[str, Path]:
     split_manifest = json.loads(split_manifest_path.read_text(encoding="utf-8"))
     membership_raw = split_manifest.get("membership")
-    membership: dict[str, str] = membership_raw if isinstance(membership_raw, dict) else {}
+    membership: dict[str, str] = {}
+    if isinstance(membership_raw, dict):
+        membership = {
+            key: value
+            for key, value in membership_raw.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
 
     records: list[dict[str, object]] = []
     with scaffold_path.open("r", encoding="utf-8") as handle:
@@ -314,9 +326,10 @@ def build_research_fixtures(
             reduced_record["profile"] = "reduced_context"
             metadata = reduced_record.get("metadata")
             if isinstance(metadata, dict):
-                keys = list(metadata.keys())
-                if keys:
-                    reduced_record["metadata"] = {keys[0]: metadata[keys[0]]}
+                string_keys = sorted(key for key in metadata if isinstance(key, str))
+                if string_keys:
+                    selected_key = string_keys[0]
+                    reduced_record["metadata"] = {selected_key: metadata[selected_key]}
                 else:
                     reduced_record["metadata"] = {}
             reduced.write(json.dumps(reduced_record, separators=(",", ":")) + "\n")

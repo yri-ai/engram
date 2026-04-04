@@ -24,8 +24,8 @@ def main() -> None:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "data",
-        help="Output root directory (default: ./data)",
+        default=Path(__file__).resolve().parents[2] / "outputs",
+        help="Output root directory (default: ./outputs)",
     )
     parser.add_argument(
         "--fixture-per-split",
@@ -43,7 +43,7 @@ def main() -> None:
     parser.add_argument(
         "--summary-output",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "data" / "results" / "pipeline_summary.json",
+        default=Path(__file__).resolve().parents[2] / "outputs" / "results" / "pipeline_summary.json",
         help="Path to write pipeline summary JSON",
     )
     args = parser.parse_args()
