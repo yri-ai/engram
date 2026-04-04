@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 
 
 def _load_fetch_module() -> ModuleType:
-    script_path = Path(__file__).resolve().parents[2] / "scripts" / "data_collection" / "fetch_edgar_cmbs.py"
+    script_path = (
+        Path(__file__).resolve().parents[2] / "scripts" / "data_collection" / "fetch_edgar_cmbs.py"
+    )
     spec = importlib.util.spec_from_file_location("fetch_edgar_cmbs", script_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load module from {script_path}")
@@ -32,7 +34,9 @@ class _FakeClient:
 
 
 @pytest.mark.asyncio
-async def test_rate_limited_get_retries_retryable_http_status(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_rate_limited_get_retries_retryable_http_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _load_fetch_module()
     module._last_request_time = 0.0
     monkeypatch.setattr(module, "RATE_LIMIT_INTERVAL", 0.0)

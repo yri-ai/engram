@@ -101,7 +101,9 @@ def test_build_normalized_scaffold_extracts_ginnie_period_from_directory(tmp_pat
     out_path = tmp_path / "normalized" / "research_scaffold.ndjson"
     build_normalized_scaffold(data_dir, out_path)
 
-    records = [json.loads(line) for line in out_path.read_text(encoding="utf-8").strip().splitlines()]
+    records = [
+        json.loads(line) for line in out_path.read_text(encoding="utf-8").strip().splitlines()
+    ]
     assert len(records) == 1
     assert records[0]["source"] == "ginnie"
     assert records[0]["event_date"] == "2026-02-01"
