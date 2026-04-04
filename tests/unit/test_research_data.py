@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import json
 import zipfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from engram.services.research_data import (
-    build_research_fixtures,
     build_normalized_scaffold,
+    build_research_fixtures,
     build_snapshot_manifest,
     build_time_split_manifest,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _write_zip(path: Path) -> None:

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from engram.services.research_experiments import build_calibration_report, run_thin_slice_experiment
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _write_ndjson(path: Path, records: list[dict[str, object]]) -> None:

@@ -1,0 +1,60 @@
+name: Promote Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source branch"
+        required: true
+        type: choice
+        options:
+          - main
+          - master
+          - staging
+      target:
+        description: "Target branch"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate promotion pair
+        run: |
+          SRC="${{ github.event.inputs.source }}"
+          DST="${{ github.event.inputs.target }}"
+          if [ "$SRC" = "main" ] && [ "$DST" = "staging" ]; then
+            exit 0
+          fi
+          if [ "$SRC" = "master" ] && [ "$DST" = "staging" ]; then
+            exit 0
+          fi
+          if [ "$SRC" = "staging" ] && [ "$DST" = "production" ]; then
+            exit 0
+          fi
+          echo "Unsupported promotion pair: $SRC -> $DST"
+          exit 1
+
+      - name: Merge source into target and push
+        run: |
+          SRC="${{ github.event.inputs.source }}"
+          DST="${{ github.event.inputs.target }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin "$SRC" "$DST"
+          git checkout -B "$DST" "origin/$DST"
+          git merge --no-ff "origin/$SRC" -m "chore: promote $SRC to $DST"
+          git push origin "$DST"
