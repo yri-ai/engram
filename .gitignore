@@ -54,6 +54,9 @@ redis_data/
 # Logs
 *.log
 
+# Worktrees
+.worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
