@@ -1,4 +1,9 @@
+# Research: Causal Bayesian Information Selection for Temporal Graphs
 
+**Date:** March 31, 2026
+**Purpose:** Explore alternatives to RL for branch forecasting — taxonomy of temporal KG reasoning approaches
+
+---
 
 ## 1. The Contrastive Expansion: Representation Learning
 
@@ -355,10 +360,6 @@ The papers we found are still valuable, but you use them differently:
 
 The biggest practical win: **you never need a training pipeline.** No GPU for policy training. No reward engineering. No episodes. The system improves through Bayesian updating (fast, cheap, online) and causal graph refinement (structural, interpretable, persistent). The LLM handles the hard reasoning (counterfactuals), and the Bayesian framework handles the learning.
 
-Want me to rewrite the CLAUDE.md and predictor architecture with this expanded framework?
-
-Here is the tighter taxonomy.
-
 ## The real problem stack
 
 Your idea is not one problem. It is **five stacked problems**:
@@ -654,7 +655,4 @@ If you want the shortest possible version:
 **Structural edge:** bi-temporal event streams  
 **Application:** interpretable financial decision support
 
-If you want, I can turn this next into a **2x2 novelty map** and a **concrete MVP architecture** with components, data model, and training loop.
-
-From this we produced this: 
-[Research Thesis Engram](Research%20Thesis%20Engram.md)
+The taxonomy above informed the following research thesis: [Research Thesis Engram](Research%20Thesis%20Engram.md)
