@@ -26,12 +26,13 @@ Engram is a conversation-native temporal knowledge graph engine that creates str
 
 ```cypher
 (:Entity {
-  // Identity (deterministic, conversation-scoped)
-  id: string,                  // "{tenant_id}:{conversation_id}:{type}:{canonical_name}"
+  // Identity (deterministic, group-scoped)
+  id: string,                  // "{tenant_id}:{group_id}:{type}:{canonical_name}"
   
   // SCOPING (MANDATORY - prevents cross-tenant contamination)
   tenant_id: string,           // Which customer/user owns this entity
-  conversation_id: string,     // Which conversation (optional for global semantic entities)
+  conversation_id: string,     // Which conversation created this entity
+  group_id: string,            // Cross-conversation linking scope (defaults to conversation_id)
   
   // Entity properties
   type: enum,                  // Person | Concept | Goal | Preference | Topic | Event
@@ -76,6 +77,7 @@ Engram is a conversation-native temporal knowledge graph engine that creates str
   // SCOPING (inherit from endpoints, enforce isolation)
   tenant_id: string,           // Must match both endpoint tenant_ids
   conversation_id: string,     // Which conversation created this relationship
+  group_id: string,            // Cross-conversation linking scope (defaults to conversation_id)
   message_id: string,          // Which specific message created this (for idempotency)
   
   // BITEMPORAL FIELDS (COMPLETE - 4 time columns)
@@ -163,6 +165,7 @@ CREATE INDEX entity_type FOR (e:Entity) ON (e.type);
 // Scoping indexes (MANDATORY for tenant isolation)
 CREATE INDEX entity_tenant FOR (e:Entity) ON (e.tenant_id);
 CREATE INDEX entity_conversation FOR (e:Entity) ON (e.conversation_id);
+CREATE INDEX entity_group FOR (e:Entity) ON (e.group_id);
 CREATE COMPOSITE INDEX entity_tenant_conv FOR (e:Entity) ON (e.tenant_id, e.conversation_id);
 CREATE COMPOSITE INDEX entity_tenant_canonical FOR (e:Entity) ON (e.tenant_id, e.canonical_name);
 
@@ -670,7 +673,7 @@ EXCLUSIVITY_POLICIES = {
 **Algorithm** (Revised - Enforces Exclusivity):
 
 ```python
-def resolve_conflicts(new_rel: Relationship, tenant_id: str, conversation_id: str):
+def resolve_conflicts(new_rel: Relationship, tenant_id: str, group_id: str):
     """
     Apply exclusivity policies and temporal versioning.
     
@@ -687,13 +690,13 @@ def resolve_conflicts(new_rel: Relationship, tenant_id: str, conversation_id: st
     existing = graph.query("""
         MATCH (a:Entity {id: $source_id})-[r:RELATIONSHIP {type: $type}]->(b:Entity)
         WHERE r.tenant_id = $tenant_id
-          AND r.conversation_id = $conversation_id
+          AND r.group_id = $group_id
           AND r.valid_to IS NULL           // Currently valid (truth)
           AND r.recorded_to IS NULL        // Currently believed (knowledge)
         RETURN r, b
         ORDER BY r.recorded_from DESC
     """, source_id=new_rel.source_id, type=new_rel.type,
-        tenant_id=tenant_id, conversation_id=conversation_id)
+        tenant_id=tenant_id, group_id=group_id)
     
     # Check exclusivity
     for old_rel, old_target in existing:
