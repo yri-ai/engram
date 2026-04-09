@@ -15,6 +15,7 @@ RUN uv sync --frozen --no-install-project
 # Copy source and tests
 COPY src/ src/
 COPY tests/ tests/
+COPY config/ config/
 
 # Install project
 RUN uv sync --frozen
@@ -34,6 +35,7 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/pyproject.toml /app/uv.lock /app/README.md ./
 COPY --from=builder /app/src/ src/
 COPY --from=builder /app/tests/ tests/
+COPY --from=builder /app/config/ config/
 
 # Set PATH to use venv
 ENV PATH="/app/.venv/bin:$PATH"
