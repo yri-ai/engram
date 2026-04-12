@@ -76,7 +76,7 @@ def test_fact_supersession():
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_models.py::test_fact_build_id -v`
+Run: `python -m pytest tests/unit/test_models.py::test_fact_build_id -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'engram.models.fact'`
 
 **Step 3: Write the Fact model**
@@ -143,7 +143,7 @@ class Fact(BaseModel):
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_models.py -k fact -v`
+Run: `python -m pytest tests/unit/test_models.py -k fact -v`
 Expected: PASS
 
 **Step 5: Add Fact storage methods to GraphStore base**
@@ -241,7 +241,7 @@ async def test_supersede_fact(memory_store):
 
 **Step 7: Run tests to verify they fail**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_memory_store.py -k fact -v`
+Run: `python -m pytest tests/unit/test_memory_store.py -k fact -v`
 Expected: FAIL (methods not implemented)
 
 **Step 8: Implement MemoryStore Fact methods**
@@ -287,7 +287,7 @@ async def supersede_fact(self, old_fact_id: str, new_fact: Fact) -> Fact:
 
 **Step 9: Run tests to verify they pass**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_memory_store.py -k fact -v`
+Run: `python -m pytest tests/unit/test_memory_store.py -k fact -v`
 Expected: PASS
 
 **Step 10: Implement Neo4jStore Fact methods**
@@ -410,7 +410,7 @@ async def test_fact_extraction(pipeline, mock_llm, memory_store):
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_extraction.py::test_fact_extraction -v`
+Run: `python -m pytest tests/unit/test_extraction.py::test_fact_extraction -v`
 Expected: FAIL
 
 **Step 3: Create the fact extraction prompt template**
@@ -544,7 +544,7 @@ await self._extract_facts(request, entities, message_id, run.id)
 
 **Step 5: Run test to verify it passes**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_extraction.py::test_fact_extraction -v`
+Run: `python -m pytest tests/unit/test_extraction.py::test_fact_extraction -v`
 Expected: PASS
 
 **Step 6: Commit**
@@ -615,7 +615,7 @@ async def test_entity_extraction_receives_prior_knowledge_context(pipeline, mock
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_extraction.py::test_entity_extraction_receives_prior_knowledge_context -v`
+Run: `python -m pytest tests/unit/test_extraction.py::test_entity_extraction_receives_prior_knowledge_context -v`
 Expected: FAIL (prompt doesn't include facts)
 
 **Step 3: Enrich context-gathering in extraction.py**
@@ -705,7 +705,7 @@ Extract entities following these rules:
 
 **Step 5: Run test to verify it passes**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_extraction.py::test_entity_extraction_receives_prior_knowledge_context -v`
+Run: `python -m pytest tests/unit/test_extraction.py::test_entity_extraction_receives_prior_knowledge_context -v`
 Expected: PASS
 
 **Step 6: Commit**
@@ -762,7 +762,7 @@ def test_delta_creation():
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_snapshot.py -v`
+Run: `python -m pytest tests/unit/test_snapshot.py -v`
 Expected: FAIL
 
 **Step 3: Write the snapshot model**
@@ -825,7 +825,7 @@ class ConversationSnapshot(BaseModel):
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_snapshot.py -v`
+Run: `python -m pytest tests/unit/test_snapshot.py -v`
 Expected: PASS
 
 **Step 5: Write snapshot service test**
@@ -887,7 +887,7 @@ async def test_build_snapshot_with_deltas(snapshot_service, memory_store):
 
 **Step 6: Run test to verify it fails**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_snapshot.py -k build -v`
+Run: `python -m pytest tests/unit/test_snapshot.py -k build -v`
 Expected: FAIL
 
 **Step 7: Write snapshot service**
@@ -977,7 +977,7 @@ class SnapshotService:
 
 **Step 8: Run test to verify it passes**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_snapshot.py -v`
+Run: `python -m pytest tests/unit/test_snapshot.py -v`
 Expected: PASS
 
 **Step 9: Integrate snapshot into extraction pipeline**
@@ -1047,7 +1047,7 @@ def test_conversation_summary():
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_models.py::test_conversation_summary -v`
+Run: `python -m pytest tests/unit/test_models.py::test_conversation_summary -v`
 Expected: FAIL
 
 **Step 3: Write the summary model**
@@ -1092,7 +1092,7 @@ class ConversationSummary(BaseModel):
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/test_models.py::test_conversation_summary -v`
+Run: `python -m pytest tests/unit/test_models.py::test_conversation_summary -v`
 Expected: PASS
 
 **Step 5: Create conversation summary prompt**
@@ -1191,7 +1191,7 @@ if summary:
 
 **Step 7: Run all tests**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/unit/ -v`
+Run: `python -m pytest tests/unit/ -v`
 Expected: PASS
 
 **Step 8: Commit**
@@ -1224,7 +1224,7 @@ async def test_get_entity_facts(client, seeded_store):
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/integration/test_api.py::test_get_entity_facts -v`
+Run: `python -m pytest tests/integration/test_api.py::test_get_entity_facts -v`
 Expected: FAIL (404)
 
 **Step 3: Add API endpoints**
@@ -1246,7 +1246,7 @@ async def get_entity_facts(
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/leonardlangsdorf/dev/projects/engram && python -m pytest tests/integration/test_api.py::test_get_entity_facts -v`
+Run: `python -m pytest tests/integration/test_api.py::test_get_entity_facts -v`
 Expected: PASS
 
 **Step 5: Commit**
