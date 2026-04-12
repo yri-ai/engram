@@ -61,5 +61,12 @@ redis_data/
 .DS_Store
 Thumbs.db
 
+# Local config
+.omx/
+
+# Data and outputs
+data/
+outputs/
+
 # Local credentials
 leo@butter
