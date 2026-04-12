@@ -9,16 +9,16 @@ from typing import Any
 from engram.models.h3 import H3Artifact, PrimitiveResult
 from engram.models.track_b import TrackBEvent
 from engram.services.h3_dataset import (
+    add_distractor_features,
+    build_branch_ranking_labels,
     build_endpoint_labels,
     build_next_transition_labels,
     build_short_chain_labels,
-    build_branch_ranking_labels,
-    add_distractor_features,
 )
 from engram.services.h3_primitives import (
-    TransitionMatrixPrimitive,
     BranchRankingPrimitive,
     LatentTransitionPrimitive,
+    TransitionMatrixPrimitive,
     compute_ece,
 )
 from engram.services.track_b_dataset import assign_splits
@@ -49,9 +49,11 @@ def _add_prev_bucket(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _subsample(rows: list[dict[str, Any]], seed: int, frac: float = 0.8) -> list[dict[str, Any]]:
     """Deterministic subsample for seed-based variation."""
+    if not rows:
+        return []
     rng = random.Random(seed)
-    k = int(len(rows) * frac)
-    return rng.sample(rows, k)
+    k = max(1, int(len(rows) * frac))
+    return rng.sample(rows, min(k, len(rows)))
 
 
 def run_h3_experiment(

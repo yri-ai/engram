@@ -14,11 +14,11 @@ different product types.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from typing import Any
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
-from engram.services.h1_schema import induce_motifs, evaluate_schema_guided_accuracy
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
+from engram.services.h1_schema import evaluate_schema_guided_accuracy, induce_motifs
 
 
 def split_into_families(

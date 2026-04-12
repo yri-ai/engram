@@ -11,10 +11,10 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
-from engram.services.h1_schema import induce_motifs, ENCODERS
-from engram.services.h3_primitives import TransitionMatrixPrimitive
+from engram.models.track_b import TrackBEvent
+from engram.services.h1_schema import ENCODERS, induce_motifs
 from engram.services.h3_dataset import build_next_transition_labels
+from engram.services.h3_primitives import TransitionMatrixPrimitive
 from engram.services.track_b_dataset import assign_splits
 
 
@@ -105,7 +105,7 @@ def run_h4_experiment(
 
     # Map each eval row to its preceding pattern
     eval_patterns: dict[str, tuple[str, ...]] = {}
-    for lid, loan_events in by_loan.items():
+    for _lid, loan_events in by_loan.items():
         encoded = [encoder(loan_events, i) for i in range(len(loan_events))]
         for i in range(window, len(encoded)):
             event = loan_events[i]
@@ -125,9 +125,8 @@ def run_h4_experiment(
             without_correct += 1
         # A "contradiction" is when the prediction is impossible per motifs
         pattern = eval_patterns.get(row["message_id"])
-        if pattern and pattern in constraints:
-            if pred["top_bucket"] not in constraints[pattern]:
-                without_contradictions += 1
+        if pattern and pattern in constraints and pred["top_bucket"] not in constraints[pattern]:
+            without_contradictions += 1
 
     without_recall = without_correct / total_eval if total_eval else 0.0
     without_contradiction_rate = without_contradictions / total_eval if total_eval else 0.0
@@ -172,10 +171,7 @@ def run_h4_experiment(
 
     # Select best tightness: minimize contradictions, keep novelty_prune_rate <= 0.10
     valid = {k: v for k, v in tightness_results.items() if v["novelty_prune_rate"] <= 0.10}
-    if valid:
-        selected = min(valid, key=lambda k: valid[k]["contradiction_rate"])
-    else:
-        selected = "loose"
+    selected = min(valid, key=lambda k: valid[k]["contradiction_rate"]) if valid else "loose"
     tightness_results["selected_tightness"] = selected
 
     best_recall = tightness_results[selected]["recall"]

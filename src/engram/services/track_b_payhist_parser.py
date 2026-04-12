@@ -16,9 +16,10 @@ one per month, giving us multi-month transition data from a single file.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
-from typing import IO, Iterator
+from typing import IO
 
 from engram.models.track_b import DelinquencyBucket, TrackBEvent
 
@@ -88,7 +89,7 @@ def parse_payhist_records(
         coupon = fields[3].strip()
         history = fields[4].strip()
 
-        if not loan_id or len(history) < 48:
+        if not loan_id or len(history) < 48 or len(report_period) != 6:
             continue
 
         yield PayHistRecord(

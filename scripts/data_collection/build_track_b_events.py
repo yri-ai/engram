@@ -56,7 +56,12 @@ def _load_loanperf_features(path: Path, limit: int | None) -> dict[str, TrackBEv
 
 
 def _enrich_event(event: TrackBEvent, features: dict[str, TrackBEvent]) -> TrackBEvent:
-    """Copy static features (rate, UPB, credit score, state) from LoanPerf onto a payhist event."""
+    """Copy static features from LoanPerf onto a payhist event.
+
+    Only copies time-invariant attributes (rate, original UPB, credit score, state).
+    Does NOT copy current_upb — that is time-varying and would introduce
+    forward-looking leakage for historical months.
+    """
     ref = features.get(event.loan_id)
     if ref is None:
         return event
@@ -64,7 +69,7 @@ def _enrich_event(event: TrackBEvent, features: dict[str, TrackBEvent]) -> Track
         loan_id=event.loan_id,
         as_of=event.as_of,
         bucket=event.bucket,
-        current_upb=ref.current_upb if event.current_upb == 0.0 else event.current_upb,
+        current_upb=event.current_upb,  # keep original (0.0 for payhist)
         interest_rate=ref.interest_rate,
         original_upb=ref.original_upb,
         credit_score=ref.credit_score,
@@ -92,6 +97,8 @@ def main() -> None:
         logger.info("Parsing payment history: %s (limit=%s)", args.payhist, args.limit)
         with zipfile.ZipFile(args.payhist) as zf:
             txt_files = [n for n in zf.namelist() if n.endswith(".txt")]
+            if not txt_files:
+                parser.error(f"Payment history zip contains no .txt files: {args.payhist}")
             with zf.open(txt_files[0]) as f:
                 records = list(parse_payhist_records(f, limit=args.limit))
         logger.info("Parsed %d loan histories", len(records))
@@ -111,6 +118,8 @@ def main() -> None:
         logger.info("Parsing LoanPerf: %s (limit=%s)", args.input, args.limit)
         with zipfile.ZipFile(args.input) as zf:
             txt_files = [n for n in zf.namelist() if n.endswith(".txt")]
+            if not txt_files:
+                parser.error(f"LoanPerf zip contains no .txt files: {args.input}")
             with zf.open(txt_files[0]) as f:
                 events = list(parse_loanperf_records(f, limit=args.limit))
         logger.info("Parsed %d events", len(events))

@@ -8,14 +8,14 @@ from engram.models.h2 import H2Artifact, ProfileResult
 from engram.models.track_b import TrackBEvent
 from engram.services.h2_context import (
     PROFILES,
-    compute_evidence_gaps,
     compute_competing_cause_discrimination,
+    compute_evidence_gaps,
 )
 from engram.services.h3_dataset import (
-    build_next_transition_labels,
     add_distractor_features,
+    build_next_transition_labels,
 )
-from engram.services.h3_primitives import TransitionMatrixPrimitive, LatentTransitionPrimitive
+from engram.services.h3_primitives import LatentTransitionPrimitive, TransitionMatrixPrimitive
 from engram.services.track_b_dataset import assign_splits
 
 

@@ -6,7 +6,6 @@ with a restricted feature set, simulating different context budgets.
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Any
 
 
@@ -122,7 +121,7 @@ def compute_competing_cause_discrimination(
     # Find rows where the true label is NOT the overwhelmingly dominant class
     # i.e., cases with actual competing causes
     subset_preds = []
-    for row, pred in zip(eval_rows, predictions):
+    for row, pred in zip(eval_rows, predictions, strict=True):
         probs = pred.get("probabilities", {})
         if len(probs) < 2:
             continue

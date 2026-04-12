@@ -6,7 +6,7 @@ import random
 from typing import Any
 
 from engram.models.track_b import TrackBEvent
-from engram.services.h1_schema import induce_motifs, evaluate_schema_guided_accuracy, Motif
+from engram.services.h1_schema import evaluate_schema_guided_accuracy, induce_motifs
 
 
 def split_loans(

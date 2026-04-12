@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 
 
 def _group_by_loan(events: list[TrackBEvent]) -> dict[str, list[TrackBEvent]]:

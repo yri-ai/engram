@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
 from typing import Any
@@ -26,7 +26,14 @@ class DelinquencyBucket(StrEnum):
         """
         if status.upper().startswith("R"):
             return cls.REO
-        months_int = int(months) if months.strip() else 1
+        months_str = months.strip()
+        if not months_str:
+            months_int = 1
+        else:
+            try:
+                months_int = int(months_str)
+            except ValueError:
+                months_int = 1
         # Ginnie Mae uses 1-based: 1=current, 2=30-day, 3=60-day, etc.
         return cls.from_months_delinquent(months_int - 1)
 

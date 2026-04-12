@@ -66,7 +66,7 @@ def extract_features_from_event_history(
         "bucket": current.bucket.value,
         "current_upb": current.current_upb,
         "months_observed": len(loan_events),
-        "bucket_changes_3m": bucket_changes,
+        f"bucket_changes_{lookback_months}m": bucket_changes,
         "prev_bucket": prev_bucket,
         "upb_change_pct": upb_change_pct,
     }
