@@ -64,8 +64,11 @@ Thumbs.db
 # Local config
 .omx/
 
-# Data
+
+# Data and outputs
 data/
+outputs/
+
 
 # Local credentials
 leo@butter
