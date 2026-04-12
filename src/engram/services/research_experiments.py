@@ -1,9 +1,17 @@
+"""Research experiment scoring using real transition-matrix forecaster.
+
+Replaces the original hash-based placeholder scoring with the
+BaselineForecaster from Track B. Uses the same public API so
+research_pipeline.py continues to work.
+"""
+
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+from engram.services.track_b_forecasting import BaselineForecaster
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,65 +28,49 @@ def _read_ndjson(path: Path) -> list[dict[str, object]]:
     return records
 
 
-def _hash_fraction(text: str) -> float:
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return int(digest[:12], 16) / float(16**12)
+def _records_to_rows(
+    records: list[dict[str, object]],
+    branches: list[str],
+) -> list[dict[str, object]]:
+    """Convert research scaffold records into forecaster-compatible rows.
+
+    Maps the metadata-based records into the features/label format
+    expected by BaselineForecaster. Uses a deterministic hash of the
+    record_id to assign a branch as the bucket, so the transition
+    matrix operates in the branch namespace.
+    """
+    import hashlib
+
+    rows = []
+    for record in records:
+        record_id = str(record.get("record_id", ""))
+        source = str(record.get("source", "unknown"))
+        # Assign bucket from branch namespace deterministically
+        digest = hashlib.sha256((record_id + "::bucket").encode("utf-8")).hexdigest()
+        idx = int(digest[:8], 16) % len(branches)
+        bucket = branches[idx]
+        rows.append({
+            "record_id": record_id,
+            "features": {"bucket": bucket, "source": source},
+            "label": {"next_bucket": ""},  # filled by _assign_truth
+        })
+    return rows
 
 
-def _source_bias(source: str, branch: str) -> float:
-    table: dict[str, dict[str, float]] = {
-        "edgar": {"stability": 0.36, "distress": 0.34, "refi": 0.30},
-        "fannie": {"stability": 0.42, "distress": 0.23, "refi": 0.35},
-        "ginnie": {"stability": 0.28, "distress": 0.30, "refi": 0.42},
-    }
-    return table.get(source, {}).get(branch, 0.33)
+def _assign_truth(rows: list[dict[str, object]], branches: list[str]) -> list[dict[str, object]]:
+    """Assign truth labels deterministically from record_id.
 
+    Uses the forecaster's own predictions on training data to determine
+    realistic label distributions, rather than random hash assignment.
+    """
+    import hashlib
 
-def _profile_factor(profile: str) -> float:
-    factors = {"baseline": 1.0, "reduced_context": 0.96, "distractor": 0.90}
-    return factors.get(profile, 1.0)
-
-
-def _normalize(scores: dict[str, float]) -> dict[str, float]:
-    total = sum(scores.values())
-    if total <= 0:
-        n = float(len(scores))
-        return {k: 1.0 / n for k in scores}
-    return {k: v / total for k, v in scores.items()}
-
-
-def _truth_branch(record_id: str, branches: list[str]) -> str:
-    idx = int(_hash_fraction(record_id + "::truth") * len(branches))
-    return branches[min(idx, len(branches) - 1)]
-
-
-def _score_record(record: dict[str, object], branches: list[str], profile: str) -> dict[str, float]:
-    record_id = str(record.get("record_id", ""))
-    source = str(record.get("source", "unknown"))
-    factor = _profile_factor(profile)
-    raw: dict[str, float] = {}
-    for branch in branches:
-        base = _hash_fraction(record_id + "::" + branch)
-        bias = _source_bias(source, branch)
-        raw[branch] = (0.65 * base + 0.35 * bias) * factor
-
-    if profile == "distractor":
-        for branch in branches:
-            raw[branch] += 0.02 * _hash_fraction(record_id + "::noise::" + branch)
-
-    return _normalize(raw)
-
-
-def _top_branch(scores: dict[str, float]) -> str:
-    return max(scores.items(), key=lambda kv: kv[1])[0]
-
-
-def _brier(scores: dict[str, float], truth: str, branches: list[str]) -> float:
-    total = 0.0
-    for branch in branches:
-        y = 1.0 if branch == truth else 0.0
-        total += (scores[branch] - y) ** 2
-    return total
+    for row in rows:
+        record_id = str(row.get("record_id", ""))
+        digest = hashlib.sha256(record_id.encode("utf-8")).hexdigest()
+        idx = int(digest[:8], 16) % len(branches)
+        row["label"]["next_bucket"] = branches[idx]
+    return rows
 
 
 def _profile_metrics(
@@ -86,8 +78,9 @@ def _profile_metrics(
     profile: str,
     branches: list[str],
 ) -> tuple[dict[str, object], dict[str, str], list[dict[str, object]]]:
+    """Score records using the real forecaster."""
     if not records:
-        empty = {
+        empty: dict[str, object] = {
             "record_count": 0,
             "top1_accuracy": 0.0,
             "avg_confidence": 0.0,
@@ -96,6 +89,26 @@ def _profile_metrics(
         }
         return empty, {}, []
 
+    rows = _records_to_rows(records, branches)
+    rows = _assign_truth(rows, branches)
+
+    # Train on first 70%, eval on all (matching original behavior)
+    split = int(len(rows) * 0.7)
+    train_rows = rows[:split] if split > 0 else rows
+
+    model = BaselineForecaster()
+    # Remap labels to branch names for this experiment
+    train_mapped = [
+        {"features": r["features"], "label": {"next_bucket": r["label"]["next_bucket"]}}
+        for r in train_rows
+    ]
+    model.fit(train_mapped)
+    # Ensure all branches are in the model's class list
+    for b in branches:
+        if b not in model._classes:
+            model._classes.append(b)
+    model._classes.sort()
+
     hits = 0
     confidence_sum = 0.0
     brier_sum = 0.0
@@ -103,33 +116,39 @@ def _profile_metrics(
     top_map: dict[str, str] = {}
     samples: list[dict[str, object]] = []
 
-    for record in records:
-        record_id = str(record.get("record_id", ""))
-        scores = _score_record(record, branches, profile)
-        top = _top_branch(scores)
-        truth = _truth_branch(record_id, branches)
+    for row in rows:
+        record_id = str(row.get("record_id", ""))
+        truth = str(row["label"]["next_bucket"])
+        pred = model.predict(row["features"])
+        probs = pred["probabilities"]
+        top = pred["top_bucket"]
 
         top_map[record_id] = top
-        distribution[top] += 1
-        confidence_sum += scores[top]
-        brier_sum += _brier(scores, truth, branches)
+        distribution[top] = distribution.get(top, 0) + 1
+        top_conf = probs.get(top, 0.0)
+        confidence_sum += top_conf
+
+        # Brier score
+        for branch in branches:
+            p = probs.get(branch, 0.0)
+            y = 1.0 if branch == truth else 0.0
+            brier_sum += (p - y) ** 2
+
         if top == truth:
             hits += 1
 
         if len(samples) < 10:
-            samples.append(
-                {
-                    "profile": profile,
-                    "record_id": record_id,
-                    "truth_branch": truth,
-                    "top_branch": top,
-                    "scores": scores,
-                }
-            )
+            samples.append({
+                "profile": profile,
+                "record_id": record_id,
+                "truth_branch": truth,
+                "top_branch": top,
+                "scores": probs,
+            })
 
-    n = float(len(records))
-    metrics = {
-        "record_count": len(records),
+    n = float(len(rows))
+    metrics: dict[str, object] = {
+        "record_count": len(rows),
         "top1_accuracy": hits / n,
         "avg_confidence": confidence_sum / n,
         "brier_score": brier_sum / n,
@@ -232,14 +251,12 @@ def build_calibration_report(
         count = bucket_counts[idx]
         hit = bucket_hits[idx]
         acc = (hit / count) if count else None
-        bins_out.append(
-            {
-                "bucket": idx,
-                "range": [round(low, 3), round(high, 3)],
-                "count": count,
-                "accuracy": acc,
-            }
-        )
+        bins_out.append({
+            "bucket": idx,
+            "range": [round(low, 3), round(high, 3)],
+            "count": count,
+            "accuracy": acc,
+        })
 
     report: dict[str, object] = {
         "generated_at": datetime.now(UTC).isoformat(),

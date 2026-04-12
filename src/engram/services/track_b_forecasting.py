@@ -27,6 +27,7 @@ class BaselineForecaster:
         # transition_counts[current_bucket][next_bucket] = count
         self._transition_counts: dict[str, Counter[str]] = defaultdict(Counter)
         self._global_counts: Counter[str] = Counter()
+        self._classes: list[str] = ALL_BUCKETS
 
     def fit(self, train_rows: list[dict[str, Any]]) -> None:
         """Fit transition probabilities from labeled training rows."""
@@ -39,6 +40,10 @@ class BaselineForecaster:
             self._transition_counts[current][next_b] += 1
             self._global_counts[next_b] += 1
 
+        # Learn classes from data; fall back to ALL_BUCKETS if empty
+        learned = sorted(set(self._global_counts.keys()))
+        self._classes = learned if learned else ALL_BUCKETS
+
     def predict(self, features: dict[str, Any]) -> dict[str, Any]:
         """Predict next bucket probabilities.
 
@@ -49,12 +54,12 @@ class BaselineForecaster:
         counts = self._transition_counts.get(current, self._global_counts)
 
         if not counts:
-            # No data at all — uniform
-            n = len(ALL_BUCKETS)
-            probs = {b: 1.0 / n for b in ALL_BUCKETS}
+            # No data at all — uniform over learned classes
+            n = len(self._classes)
+            probs = {b: 1.0 / n for b in self._classes}
         else:
             total = sum(counts.values())
-            probs = {b: counts.get(b, 0) / total for b in ALL_BUCKETS}
+            probs = {b: counts.get(b, 0) / total for b in self._classes}
 
         top_bucket = max(probs, key=lambda b: probs[b])
 
@@ -76,7 +81,7 @@ class BaselineForecaster:
                 correct += 1
 
             # Brier score: sum of squared errors over all classes
-            for bucket in ALL_BUCKETS:
+            for bucket in self._classes:
                 p = pred["probabilities"].get(bucket, 0.0)
                 y = 1.0 if bucket == truth else 0.0
                 brier_sum += (p - y) ** 2
