@@ -621,21 +621,14 @@ Confidence decay controls how fast relationships lose confidence when not reinfo
 
 ## 9. CLI Reference
 
-Working commands:
-
 | Command | Description |
 |---------|-------------|
 | `engram init` | Initialize Neo4j schema and indexes |
 | `engram serve` | Start the FastAPI server |
 | `engram health` | Check Neo4j, Redis, and LLM connectivity |
-
-Pending implementation (stubs — use the HTTP API instead):
-
-| Command | Status |
-|---------|--------|
-| `engram ingest <file>` | Stub — parses JSON but does not call the pipeline |
-| `engram query <entity>` | Stub — displays empty table |
-| `engram export` | Stub — writes empty JSON |
+| `engram ingest <file>` | Ingest JSON messages via the API — shows progress bar and extraction metrics |
+| `engram query <entity>` | Search entities and display relationships via the API — supports `--mode` and `--as-of` for temporal queries |
+| `engram export` | Stub — writes empty JSON structure |
 
 ---
 

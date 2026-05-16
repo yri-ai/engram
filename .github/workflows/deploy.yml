@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  push:
+    branches: [staging, production]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Validate manual deploy target matches branch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event.inputs.target }}" != "${{ github.ref_name }}" ]; then
+            echo "workflow_dispatch target must match ref_name"
+            echo "target=${{ github.event.inputs.target }} ref=${{ github.ref_name }}"
+            exit 1
+          fi
+      - name: Verify unit + e2e tests
+        run: uv run --extra dev pytest tests/unit tests/e2e -q
+
+  deploy-staging:
+    if: github.ref_name == 'staging' || github.event.inputs.target == 'staging'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Trigger staging deployment webhook
+        env:
+          DEPLOY_URL: ${{ secrets.STAGING_DEPLOY_WEBHOOK_URL }}
+        run: |
+          test -n "$DEPLOY_URL" || (echo "Missing STAGING_DEPLOY_WEBHOOK_URL secret" && exit 1)
+          curl -fsSL -X POST "$DEPLOY_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"environment":"staging","sha":"${{ github.sha }}","ref":"${{ github.ref_name }}","repository":"${{ github.repository }}"}'
+
+  deploy-production:
+    if: github.ref_name == 'production' || github.event.inputs.target == 'production'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger production deployment webhook
+        env:
+          DEPLOY_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
+        run: |
+          test -n "$DEPLOY_URL" || (echo "Missing PRODUCTION_DEPLOY_WEBHOOK_URL secret" && exit 1)
+          curl -fsSL -X POST "$DEPLOY_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"environment":"production","sha":"${{ github.sha }}","ref":"${{ github.ref_name }}","repository":"${{ github.repository }}"}'

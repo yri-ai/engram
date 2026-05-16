@@ -334,51 +334,19 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full schema, API design, and implemen
 
 ---
 
-## Roadmap
+## What's Included (v0.1.0)
 
-### v0.1.0 — MVP (Current)
-
-- ✅ Core graph schema (entities, bitemporal relationships)
-- ✅ 7-stage extraction pipeline (entities, relationships, facts, commitments, summaries)
-- ✅ Context-aware extraction (prior facts + relationships fed to LLM)
-- ✅ Fact model with supersession chains
-- ✅ Conversation snapshots with delta tracking
-- ✅ Conflict resolution & exclusivity policies
-- ✅ Confidence decay + reinforcement
-- ✅ Point-in-time and evolution queries
-- ✅ REST API (10 endpoints including facts)
-- ✅ CLI tools (`engram serve`, `ingest`, `query`)
-- ✅ Docker Compose deployment (Neo4j + Redis + API)
-
-### v0.2 — Multi-Tenancy (Week 8)
-
-- Multi-user support (isolated graphs per user)
-- API key authentication
-- Relationship clustering (group related entities)
-- Advanced search (filters, aggregations)
-
-### v0.3 — Analytics & Integrations (Week 12)
-
-- Advanced analytics (PageRank, centrality, trending topics)
-- Vertical schema templates (coaching, sales, support)
-- Slack integration (ingest channel conversations)
-- LangChain retriever plugin
-
-### v1.0 — Production Ready (Month 6)
-
-- Hosted beta (commercial SaaS layer)
-- SSO (SAML, OAuth2)
-- Audit trails
-- Custom extraction pipeline builder (no-code)
-- PostgreSQL + AGE adapter (community contribution)
-
-### v2.0 — Advanced Features (Year 1)
-
-- Entity merging UI (manual review + active learning)
-- Learned decay rates (from user feedback)
-- Graph diffing (compare states between dates)
-- Time-travel visualization (animated evolution)
-- CRM integrations (Salesforce, HubSpot)
+- Core graph schema (entities, bitemporal relationships)
+- 7-stage extraction pipeline (entities, relationships, facts, commitments, summaries)
+- Context-aware extraction (prior facts + relationships fed to LLM)
+- Fact model with supersession chains
+- Conversation snapshots with delta tracking
+- Conflict resolution & exclusivity policies
+- Confidence decay + reinforcement
+- Point-in-time and evolution queries
+- REST API (10 endpoints including facts)
+- CLI tools (`engram serve`, `ingest`, `query`)
+- Docker Compose deployment (Neo4j + Redis + API)
 
 ---
 
@@ -415,14 +383,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding standards,
 - Additional LLM providers (Cohere, local models)
 - Vertical schema templates (healthcare, education, sales)
 - Documentation improvements
-
----
-
-## Community
-
-- **Discord**: [Join the Engram community](https://discord.gg/engram) (coming soon)
-- **Twitter**: [@EngramAI](https://twitter.com/EngramAI) (updates, demos)
-- **Blog**: [engram.dev/blog](https://engram.dev/blog) (architecture deep dives, use cases)
 
 ---
 
