@@ -21,6 +21,8 @@ from rich.progress import Progress
 from rich.table import Table
 
 from engram.config import Settings
+from engram.models.branch_forecasting import ContextBudget
+from engram.services.branch_forecasting import BranchForecaster, evidence_from_path
 from engram.storage.neo4j import Neo4jStore
 
 app = typer.Typer(name="engram", help="Temporal knowledge graph engine for AI memory")
@@ -361,6 +363,82 @@ def query(
         raise typer.Exit(code=1) from exc
     finally:
         client.close()
+
+
+@app.command()
+def forecast(
+    file: str = typer.Argument(..., help="Path to forecast evidence JSON/NDJSON or directory"),
+    objective: str = typer.Option(..., help="Decision objective to forecast against"),
+    structural_family: str = typer.Option(
+        "margin_analysis", help="Forecast structural family"
+    ),
+    max_items: int = typer.Option(6, help="Maximum evidence items to use"),
+    max_tokens: int = typer.Option(1200, help="Maximum approximate context tokens"),
+    min_score: float = typer.Option(0.0, help="Minimum evidence salience to consider"),
+    output: str | None = typer.Option(None, help="Optional JSON output path"),
+) -> None:
+    """Forecast plausible next branches from compact evidence."""
+    file_path = Path(file)
+    if not file_path.exists():
+        console.print(f"[bold red]✗ File not found: {file}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1)
+
+    try:
+        evidence = evidence_from_path(file_path)
+        if not evidence:
+            raise CLIError("No forecast evidence found")
+
+        forecaster = BranchForecaster()
+        result = forecaster.forecast(
+            objective=objective,
+            structural_family=structural_family,
+            evidence=evidence,
+            budget=ContextBudget(
+                max_items=max_items,
+                max_tokens=max_tokens,
+                min_score=min_score,
+            ),
+        )
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+
+    result_payload = result.model_dump(mode="json")
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(result_payload, indent=2), encoding="utf-8")
+        console.print(f"[bold green]✓ Forecast written to {output}[/bold green]")
+
+    _render_forecast(result_payload)
+
+
+def _render_forecast(result: dict[str, Any]) -> None:
+    console.print(
+        f"[bold blue]Forecast[/bold blue] objective={result['objective']} "
+        f"family={result['structural_family']}"
+    )
+    console.print(f"[bold green]Top branch: {result['top_branch']}[/bold green]")
+
+    table = Table(title="Branch Scores")
+    table.add_column("Branch", style="cyan")
+    table.add_column("Score", style="green")
+    table.add_column("Evidence", style="magenta")
+    table.add_column("Missing", style="yellow")
+    table.add_column("Rationale", style="dim")
+
+    for score in result["scores"]:
+        table.add_row(
+            score["branch"],
+            f"{score['score']:.3f}",
+            ", ".join(score["matched_evidence_ids"]) or "-",
+            ", ".join(score["missing_precursors"]) or "-",
+            score["rationale"],
+        )
+    console.print(table)
+
+    if result["evidence_gaps"]:
+        console.print("[bold yellow]Evidence gaps:[/bold yellow] " + ", ".join(result["evidence_gaps"]))
 
 
 def _resolve_entity(
