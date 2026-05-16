@@ -200,6 +200,14 @@ class TestExtractionPipelineWithEmbeddings:
                     ]
                 },
                 {"relationships": []},
+                {"facts": []},
+                {"commitments": []},
+                {
+                    "opening_state": "",
+                    "key_shift": None,
+                    "closing_state": "",
+                    "breakthrough": False,
+                },
             ]
         )
 
@@ -258,6 +266,14 @@ class TestExtractionPipelineWithEmbeddings:
                     ]
                 },
                 {"relationships": []},
+                {"facts": []},
+                {"commitments": []},
+                {
+                    "opening_state": "",
+                    "key_shift": None,
+                    "closing_state": "",
+                    "breakthrough": False,
+                },
             ]
         )
 
@@ -309,6 +325,14 @@ class TestExtractionPipelineWithEmbeddings:
                     ]
                 },
                 {"relationships": []},
+                {"facts": []},
+                {"commitments": []},
+                {
+                    "opening_state": "",
+                    "key_shift": None,
+                    "closing_state": "",
+                    "breakthrough": False,
+                },
             ]
         )
 
