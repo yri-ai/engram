@@ -2,8 +2,8 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
-from engram.services.h5_transfer import split_into_families, run_h5_experiment
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
+from engram.services.h5_transfer import run_h5_experiment, split_into_families
 
 
 def _make_events(n_loans: int = 40) -> list[TrackBEvent]:
@@ -13,33 +13,49 @@ def _make_events(n_loans: int = 40) -> list[TrackBEvent]:
         if i % 4 == 0:
             # Volatile: delinquent in first half
             buckets = [
-                DelinquencyBucket.D30, DelinquencyBucket.D60,
-                DelinquencyBucket.D30, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.D60,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
             ]
         elif i % 4 == 1:
             # Another volatile pattern
             buckets = [
-                DelinquencyBucket.CURRENT, DelinquencyBucket.D30,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.D30,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.D30, DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
             ]
         else:
             # Stable: all current
             buckets = [DelinquencyBucket.CURRENT] * 12
 
         for m, b in enumerate(buckets):
-            events.append(TrackBEvent(
-                loan_id=loan_id, as_of=date(2025, (m % 12) + 1, 1),
-                bucket=b, current_upb=100000.0 - m * 500,
-                state="CA" if i % 2 == 0 else "TX",
-            ))
+            events.append(
+                TrackBEvent(
+                    loan_id=loan_id,
+                    as_of=date(2025, (m % 12) + 1, 1),
+                    bucket=b,
+                    current_upb=100000.0 - m * 500,
+                    state="CA" if i % 2 == 0 else "TX",
+                )
+            )
     return events
 
 

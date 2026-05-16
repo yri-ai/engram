@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from engram.services.track_b_forecasting import BaselineForecaster
 
@@ -17,8 +17,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _read_ndjson(path: Path) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
+Row = dict[str, Any]
+
+
+def _read_ndjson(path: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
@@ -29,9 +32,9 @@ def _read_ndjson(path: Path) -> list[dict[str, object]]:
 
 
 def _records_to_rows(
-    records: list[dict[str, object]],
+    records: list[dict[str, Any]],
     branches: list[str],
-) -> list[dict[str, object]]:
+) -> list[Row]:
     """Convert research scaffold records into forecaster-compatible rows.
 
     Maps the metadata-based records into the features/label format
@@ -49,15 +52,17 @@ def _records_to_rows(
         digest = hashlib.sha256((record_id + "::bucket").encode("utf-8")).hexdigest()
         idx = int(digest[:8], 16) % len(branches)
         bucket = branches[idx]
-        rows.append({
-            "record_id": record_id,
-            "features": {"bucket": bucket, "source": source},
-            "label": {"next_bucket": ""},  # filled by _assign_truth
-        })
+        rows.append(
+            {
+                "record_id": record_id,
+                "features": {"bucket": bucket, "source": source},
+                "label": {"next_bucket": ""},  # filled by _assign_truth
+            }
+        )
     return rows
 
 
-def _assign_truth(rows: list[dict[str, object]], branches: list[str]) -> list[dict[str, object]]:
+def _assign_truth(rows: list[Row], branches: list[str]) -> list[Row]:
     """Assign truth labels deterministically from record_id.
 
     Uses the forecaster's own predictions on training data to determine
@@ -74,7 +79,7 @@ def _assign_truth(rows: list[dict[str, object]], branches: list[str]) -> list[di
 
 
 def _profile_metrics(
-    records: list[dict[str, object]],
+    records: list[dict[str, Any]],
     profile: str,
     branches: list[str],
 ) -> tuple[dict[str, object], dict[str, str], list[dict[str, object]]]:
@@ -138,13 +143,15 @@ def _profile_metrics(
             hits += 1
 
         if len(samples) < 10:
-            samples.append({
-                "profile": profile,
-                "record_id": record_id,
-                "truth_branch": truth,
-                "top_branch": top,
-                "scores": probs,
-            })
+            samples.append(
+                {
+                    "profile": profile,
+                    "record_id": record_id,
+                    "truth_branch": truth,
+                    "top_branch": top,
+                    "scores": probs,
+                }
+            )
 
     n = float(len(rows))
     metrics: dict[str, object] = {
@@ -251,12 +258,14 @@ def build_calibration_report(
         count = bucket_counts[idx]
         hit = bucket_hits[idx]
         acc = (hit / count) if count else None
-        bins_out.append({
-            "bucket": idx,
-            "range": [round(low, 3), round(high, 3)],
-            "count": count,
-            "accuracy": acc,
-        })
+        bins_out.append(
+            {
+                "bucket": idx,
+                "range": [round(low, 3), round(high, 3)],
+                "count": count,
+                "accuracy": acc,
+            }
+        )
 
     report: dict[str, object] = {
         "generated_at": datetime.now(UTC).isoformat(),

@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 from engram.services.h2_experiments import run_h2_experiment
 
 
@@ -13,26 +13,34 @@ def _make_events(n_loans: int = 30) -> list[TrackBEvent]:
         loan_id = f"LN{i:04d}"
         if i % 5 == 0:
             buckets = [
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.D30, DelinquencyBucket.D60,
-                DelinquencyBucket.D30, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.D60,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
             ]
         else:
             buckets = [DelinquencyBucket.CURRENT] * 12
 
         for m, b in enumerate(buckets):
-            events.append(TrackBEvent(
-                loan_id=loan_id,
-                as_of=date(2025, (m % 12) + 1, 1),
-                bucket=b,
-                current_upb=100000.0 - m * 500,
-                interest_rate=7.0,
-                credit_score=720,
-                state="CA",
-            ))
+            events.append(
+                TrackBEvent(
+                    loan_id=loan_id,
+                    as_of=date(2025, (m % 12) + 1, 1),
+                    bucket=b,
+                    current_upb=100000.0 - m * 500,
+                    interest_rate=7.0,
+                    credit_score=720,
+                    state="CA",
+                )
+            )
     return events
 
 

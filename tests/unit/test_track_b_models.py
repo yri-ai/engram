@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 
 
 def test_delinquency_bucket_from_raw():

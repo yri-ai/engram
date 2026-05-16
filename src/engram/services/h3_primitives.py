@@ -104,8 +104,10 @@ class LatentTransitionPrimitive:
         self._global.clear()
         for row in rows:
             current = row["features"]["bucket"]
-            changed = row["features"].get("prev_bucket") is not None and \
-                      row["features"]["prev_bucket"] != current
+            changed = (
+                row["features"].get("prev_bucket") is not None
+                and row["features"]["prev_bucket"] != current
+            )
             target = row["label"]["next_bucket"]
             self._counts[(current, changed)][target] += 1
             self._global[target] += 1
@@ -113,8 +115,7 @@ class LatentTransitionPrimitive:
 
     def predict(self, features: dict[str, Any]) -> dict[str, Any]:
         current = features["bucket"]
-        changed = features.get("prev_bucket") is not None and \
-                  features["prev_bucket"] != current
+        changed = features.get("prev_bucket") is not None and features["prev_bucket"] != current
         counts = self._counts.get((current, changed), self._global)
         if not counts:
             n = max(len(self._classes), 1)

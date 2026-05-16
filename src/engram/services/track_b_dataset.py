@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from engram.models.track_b import TrackBEvent
+if TYPE_CHECKING:
+    from engram.models.track_b import TrackBEvent
 
 
 class LeakageError(Exception):
@@ -85,9 +86,7 @@ def validate_no_leakage(rows: list[dict[str, Any]]) -> None:
         msg_splits[row["message_id"]].add(row["split"])
     for msg_id, splits in msg_splits.items():
         if len(splits) > 1:
-            raise LeakageError(
-                f"message_id {msg_id} appears in multiple splits: {splits}"
-            )
+            raise LeakageError(f"message_id {msg_id} appears in multiple splits: {splits}")
 
     # Check 2: same (loan_id, year-month) across splits
     loan_month_splits: dict[tuple[str, str], set[str]] = defaultdict(set)

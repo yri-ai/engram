@@ -2,13 +2,14 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 from engram.services.h4_symbolic import prune_predictions, run_h4_experiment
 
 
 def test_prune_predictions_loose():
     """Loose: only allow observed outcomes."""
     from collections import Counter
+
     constraints = {("current", "current", "d30"): Counter({"d60": 10, "current": 5})}
     predictions = {"current": 0.3, "d30": 0.4, "d60": 0.2, "d90": 0.1}
     pruned = prune_predictions(predictions, ("current", "current", "d30"), constraints, "loose")
@@ -22,6 +23,7 @@ def test_prune_predictions_loose():
 def test_prune_predictions_hard():
     """Hard: only top 2 outcomes."""
     from collections import Counter
+
     constraints = {("a", "b", "c"): Counter({"x": 100, "y": 50, "z": 5})}
     predictions = {"x": 0.3, "y": 0.3, "z": 0.4}
     pruned = prune_predictions(predictions, ("a", "b", "c"), constraints, "hard")
@@ -42,20 +44,30 @@ def _make_events(n_loans: int = 30) -> list[TrackBEvent]:
         loan_id = f"LN{i:04d}"
         if i % 5 == 0:
             buckets = [
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.D30, DelinquencyBucket.D60,
-                DelinquencyBucket.D30, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.D60,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
             ]
         else:
             buckets = [DelinquencyBucket.CURRENT] * 12
         for m, b in enumerate(buckets):
-            events.append(TrackBEvent(
-                loan_id=loan_id, as_of=date(2025, (m % 12) + 1, 1),
-                bucket=b, current_upb=100000.0 - m * 500,
-            ))
+            events.append(
+                TrackBEvent(
+                    loan_id=loan_id,
+                    as_of=date(2025, (m % 12) + 1, 1),
+                    bucket=b,
+                    current_upb=100000.0 - m * 500,
+                )
+            )
     return events
 
 

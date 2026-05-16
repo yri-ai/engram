@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import random
 import statistics
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from engram.models.h3 import H3Artifact, PrimitiveResult
-from engram.models.track_b import TrackBEvent
 from engram.services.h3_dataset import (
     add_distractor_features,
     build_branch_ranking_labels,
@@ -23,21 +22,28 @@ from engram.services.h3_primitives import (
 )
 from engram.services.track_b_dataset import assign_splits
 
+if TYPE_CHECKING:
+    from engram.models.track_b import TrackBEvent
+
+
+Row = dict[str, Any]
+PrimitiveModel = TransitionMatrixPrimitive | BranchRankingPrimitive | LatentTransitionPrimitive
+
 
 def _split_rows(
-    rows: list[dict[str, Any]],
+    rows: list[Row],
     train_end: str,
     eval_end: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[Row], list[Row]]:
     rows = assign_splits(rows, train_end=train_end, eval_end=eval_end)
     train = [r for r in rows if r["split"] == "train"]
     eval_rows = [r for r in rows if r["split"] == "eval"]
     return train, eval_rows
 
 
-def _add_prev_bucket(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _add_prev_bucket(rows: list[Row]) -> list[Row]:
     """Add prev_bucket feature by looking at previous row for same loan."""
-    by_loan: dict[str, list[dict[str, Any]]] = {}
+    by_loan: dict[str, list[Row]] = {}
     for r in rows:
         by_loan.setdefault(r["loan_id"], []).append(r)
     for loan_rows in by_loan.values():
@@ -47,7 +53,7 @@ def _add_prev_bucket(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def _subsample(rows: list[dict[str, Any]], seed: int, frac: float = 0.8) -> list[dict[str, Any]]:
+def _subsample(rows: list[Row], seed: int, frac: float = 0.8) -> list[Row]:
     """Deterministic subsample for seed-based variation."""
     if not rows:
         return []
@@ -63,21 +69,21 @@ def run_h3_experiment(
     seeds: list[int] | None = None,
 ) -> H3Artifact:
     """Run the full H3 comparison experiment."""
-    if seeds is None:
+    if not seeds:
         seeds = [7, 17, 27]
 
     artifact = H3Artifact(seed_list=seeds)
 
     # --- Main primitive comparison ---
-    primitive_builders = {
-        "endpoint": lambda: build_endpoint_labels(events, horizon=6),
-        "next_transition": lambda: build_next_transition_labels(events),
-        "short_chain": lambda: build_short_chain_labels(events, chain_length=3),
-        "branch_ranking": lambda: build_branch_ranking_labels(events, window=3),
-    }
-
-    for prim_name, builder in primitive_builders.items():
-        rows = builder()
+    for prim_name in ("endpoint", "next_transition", "short_chain", "branch_ranking"):
+        if prim_name == "endpoint":
+            rows = build_endpoint_labels(events, horizon=6)
+        elif prim_name == "next_transition":
+            rows = build_next_transition_labels(events)
+        elif prim_name == "short_chain":
+            rows = build_short_chain_labels(events, chain_length=3)
+        else:
+            rows = build_branch_ranking_labels(events, window=3)
         train, eval_rows = _split_rows(rows, train_end, eval_end)
 
         if not train or not eval_rows:
@@ -88,6 +94,7 @@ def run_h3_experiment(
 
         # Run across seeds
         accs, briers = [], []
+        model: PrimitiveModel = TransitionMatrixPrimitive(prim_name)
         for seed in seeds:
             train_sub = _subsample(train, seed)
             if prim_name == "branch_ranking":
@@ -119,7 +126,7 @@ def run_h3_experiment(
         }
 
     # --- Chain-length sensitivity sweep ---
-    chain_results = {}
+    chain_results: dict[str, dict[str, float]] = {}
     for steps in [1, 2, 3, 4]:
         if steps == 1:
             rows = build_next_transition_labels(events)
@@ -129,9 +136,9 @@ def run_h3_experiment(
         if not train or not eval_rows:
             chain_results[f"step_{steps}"] = {"top1_accuracy_mean": 0.0, "brier_score_mean": 0.0}
             continue
-        model = TransitionMatrixPrimitive(f"chain_{steps}")
-        model.fit(train)
-        m = model.backtest(eval_rows)
+        chain_model = TransitionMatrixPrimitive(f"chain_{steps}")
+        chain_model.fit(train)
+        m = chain_model.backtest(eval_rows)
         chain_results[f"step_{steps}"] = {
             "top1_accuracy_mean": m["top1_accuracy"],
             "brier_score_mean": m["brier_score"],
@@ -139,8 +146,10 @@ def run_h3_experiment(
 
     # Select best horizon by Brier
     best_step = min(chain_results, key=lambda k: chain_results[k]["brier_score_mean"])
-    chain_results["selected_horizon"] = best_step
-    artifact.chain_length_sensitivity = chain_results
+    artifact.chain_length_sensitivity = {
+        **chain_results,
+        "selected_horizon": best_step,
+    }
 
     # --- Observed vs latent ---
     next_rows = build_next_transition_labels(events)
@@ -159,23 +168,30 @@ def run_h3_experiment(
         lat_m = lat_model.backtest(eval_rows)
 
         artifact.observed_vs_latent = {
-            "observed_only": {"top1_accuracy_mean": obs_m["top1_accuracy"], "brier_score_mean": obs_m["brier_score"]},
-            "latent_enabled": {"top1_accuracy_mean": lat_m["top1_accuracy"], "brier_score_mean": lat_m["brier_score"]},
+            "observed_only": {
+                "top1_accuracy_mean": obs_m["top1_accuracy"],
+                "brier_score_mean": obs_m["brier_score"],
+            },
+            "latent_enabled": {
+                "top1_accuracy_mean": lat_m["top1_accuracy"],
+                "brier_score_mean": lat_m["brier_score"],
+            },
             "latent_lift_accuracy": lat_m["top1_accuracy"] - obs_m["top1_accuracy"],
-            "latent_lift_brier": obs_m["brier_score"] - lat_m["brier_score"],  # positive = latent is better
+            "latent_lift_brier": obs_m["brier_score"]
+            - lat_m["brier_score"],  # positive = latent is better
         }
 
     # --- Delayed-outcome horizons ---
-    horizon_results = {}
+    horizon_results: dict[str, dict[str, float]] = {}
     for h in [1, 2, 3, 4]:
         rows = build_endpoint_labels(events, horizon=h)
         train, eval_rows = _split_rows(rows, train_end, eval_end)
         if not train or not eval_rows:
             horizon_results[f"horizon_{h}m"] = {"top1_accuracy_mean": 0.0, "brier_score_mean": 0.0}
             continue
-        model = TransitionMatrixPrimitive(f"horizon_{h}")
-        model.fit(train)
-        m = model.backtest(eval_rows)
+        horizon_model = TransitionMatrixPrimitive(f"horizon_{h}")
+        horizon_model.fit(train)
+        m = horizon_model.backtest(eval_rows)
         horizon_results[f"horizon_{h}m"] = {
             "top1_accuracy_mean": m["top1_accuracy"],
             "brier_score_mean": m["brier_score"],

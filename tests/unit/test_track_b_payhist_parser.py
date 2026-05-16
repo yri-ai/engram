@@ -5,11 +5,10 @@ from io import BytesIO
 
 from engram.models.track_b import DelinquencyBucket
 from engram.services.track_b_payhist_parser import (
-    parse_payhist_records,
-    expand_history_to_events,
     PayHistRecord,
+    expand_history_to_events,
+    parse_payhist_records,
 )
-
 
 SAMPLE_DATA = (
     b"HH|202602|20260309\n"

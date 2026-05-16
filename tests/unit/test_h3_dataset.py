@@ -2,13 +2,13 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 from engram.services.h3_dataset import (
+    add_distractor_features,
+    build_branch_ranking_labels,
     build_endpoint_labels,
     build_next_transition_labels,
     build_short_chain_labels,
-    build_branch_ranking_labels,
-    add_distractor_features,
 )
 
 
@@ -24,7 +24,7 @@ def _sample_events() -> list[TrackBEvent]:
     ]
     return [
         TrackBEvent(loan_id="LN1", as_of=date(2025, m, 1), bucket=b, current_upb=100000.0)
-        for m, b in zip(range(1, 7), buckets)
+        for m, b in zip(range(1, 7), buckets, strict=True)
     ]
 
 

@@ -1,9 +1,9 @@
 """Tests for H3 predictive primitives."""
 
 from engram.services.h3_primitives import (
-    TransitionMatrixPrimitive,
     BranchRankingPrimitive,
     LatentTransitionPrimitive,
+    TransitionMatrixPrimitive,
     compute_ece,
 )
 
@@ -48,8 +48,14 @@ def test_branch_ranking_primitive():
 
 def test_latent_transition_uses_prev_bucket():
     rows = [
-        {"features": {"bucket": "current", "prev_bucket": None}, "label": {"next_bucket": "current"}},
-        {"features": {"bucket": "current", "prev_bucket": None}, "label": {"next_bucket": "current"}},
+        {
+            "features": {"bucket": "current", "prev_bucket": None},
+            "label": {"next_bucket": "current"},
+        },
+        {
+            "features": {"bucket": "current", "prev_bucket": None},
+            "label": {"next_bucket": "current"},
+        },
         {"features": {"bucket": "current", "prev_bucket": "d30"}, "label": {"next_bucket": "d30"}},
         {"features": {"bucket": "current", "prev_bucket": "d30"}, "label": {"next_bucket": "d30"}},
     ]

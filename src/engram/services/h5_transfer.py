@@ -125,8 +125,11 @@ def characterize_structural_drivers(
     state_transition_rates: dict[str | None, list[float]] = defaultdict(list)
     for loan_events in by_loan.values():
         sorted_events = sorted(loan_events, key=lambda e: e.as_of)
-        transitions = sum(1 for i in range(1, len(sorted_events))
-                          if sorted_events[i].bucket != sorted_events[i - 1].bucket)
+        transitions = sum(
+            1
+            for i in range(1, len(sorted_events))
+            if sorted_events[i].bucket != sorted_events[i - 1].bucket
+        )
         rate = transitions / max(len(sorted_events) - 1, 1)
         state = sorted_events[0].state
         state_transition_rates[state].append(rate)
@@ -196,8 +199,10 @@ def run_h5_experiment(
 
     return {
         "families": ["stable", "volatile"],
-        "family_sizes": {"stable": len(set(e.loan_id for e in family_a)),
-                         "volatile": len(set(e.loan_id for e in family_b))},
+        "family_sizes": {
+            "stable": len(set(e.loan_id for e in family_a)),
+            "volatile": len(set(e.loan_id for e in family_b)),
+        },
         "shared_core": {"accuracy": shared_eval["accuracy"]},
         "family_specific": {"accuracy": specific_eval["accuracy"]},
         "cross_family": {"accuracy": cross_eval["accuracy"]},
@@ -205,5 +210,9 @@ def run_h5_experiment(
         "transferable_motif_score": transferable_score,
         "lift_vs_shared_core": specific_eval["accuracy"] - shared_eval["accuracy"],
         "structural_drivers": drivers,
-        "motif_counts": {"shared": len(motifs_shared), "family_a": len(motifs_a), "family_b": len(motifs_b)},
+        "motif_counts": {
+            "shared": len(motifs_shared),
+            "family_a": len(motifs_a),
+            "family_b": len(motifs_b),
+        },
     }

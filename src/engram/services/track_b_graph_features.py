@@ -10,10 +10,12 @@ to pull graph-derived features (entity counts, relationship types, etc.).
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from engram.models.track_b import TrackBEvent
+if TYPE_CHECKING:
+    from datetime import date
+
+    from engram.models.track_b import TrackBEvent
 
 
 def extract_features_from_event_history(

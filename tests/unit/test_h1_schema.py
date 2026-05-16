@@ -2,8 +2,8 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
-from engram.services.h1_schema import induce_motifs, evaluate_schema_guided_accuracy
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
+from engram.services.h1_schema import evaluate_schema_guided_accuracy, induce_motifs
 from engram.services.h1_transfer import run_h1_experiment, split_loans
 
 
@@ -15,29 +15,39 @@ def _make_events(n_loans: int = 20) -> list[TrackBEvent]:
         if i % 4 == 0:
             # Deterioration motif: current → current → d30 → d60
             buckets = [
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.D30, DelinquencyBucket.D60,
-                DelinquencyBucket.D30, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.D60,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
             ]
         elif i % 4 == 1:
             # Same deterioration motif (reusable!)
             buckets = [
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
-                DelinquencyBucket.D30, DelinquencyBucket.D60,
-                DelinquencyBucket.D60, DelinquencyBucket.D30,
-                DelinquencyBucket.CURRENT, DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.D60,
+                DelinquencyBucket.D60,
+                DelinquencyBucket.D30,
+                DelinquencyBucket.CURRENT,
+                DelinquencyBucket.CURRENT,
             ]
         else:
             buckets = [DelinquencyBucket.CURRENT] * 8
 
         for m, b in enumerate(buckets):
-            events.append(TrackBEvent(
-                loan_id=loan_id,
-                as_of=date(2025, (m % 12) + 1, 1),
-                bucket=b,
-                current_upb=100000.0 - m * 1000,
-            ))
+            events.append(
+                TrackBEvent(
+                    loan_id=loan_id,
+                    as_of=date(2025, (m % 12) + 1, 1),
+                    bucket=b,
+                    current_upb=100000.0 - m * 1000,
+                )
+            )
     return events
 
 

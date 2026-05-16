@@ -36,14 +36,16 @@ def build_endpoint_labels(
         for i in range(len(loan_events) - horizon):
             current = loan_events[i]
             future = loan_events[i + horizon]
-            rows.append({
-                "event_id": current.event_id,
-                "message_id": current.message_id,
-                "loan_id": current.loan_id,
-                "as_of": current.as_of.isoformat(),
-                "features": current.features_dict(),
-                "label": {"next_bucket": future.bucket.value, "horizon_months": horizon},
-            })
+            rows.append(
+                {
+                    "event_id": current.event_id,
+                    "message_id": current.message_id,
+                    "loan_id": current.loan_id,
+                    "as_of": current.as_of.isoformat(),
+                    "features": current.features_dict(),
+                    "label": {"next_bucket": future.bucket.value, "horizon_months": horizon},
+                }
+            )
     return rows
 
 
@@ -60,14 +62,16 @@ def build_next_transition_labels(
         for i in range(len(loan_events) - 1):
             current = loan_events[i]
             next_e = loan_events[i + 1]
-            rows.append({
-                "event_id": current.event_id,
-                "message_id": current.message_id,
-                "loan_id": current.loan_id,
-                "as_of": current.as_of.isoformat(),
-                "features": current.features_dict(),
-                "label": {"next_bucket": next_e.bucket.value, "horizon_months": 1},
-            })
+            rows.append(
+                {
+                    "event_id": current.event_id,
+                    "message_id": current.message_id,
+                    "loan_id": current.loan_id,
+                    "as_of": current.as_of.isoformat(),
+                    "features": current.features_dict(),
+                    "label": {"next_bucket": next_e.bucket.value, "horizon_months": 1},
+                }
+            )
     return rows
 
 
@@ -86,14 +90,16 @@ def build_short_chain_labels(
             current = loan_events[i]
             chain = [loan_events[i + j + 1].bucket.value for j in range(chain_length)]
             chain_label = "-".join(chain)
-            rows.append({
-                "event_id": current.event_id,
-                "message_id": current.message_id,
-                "loan_id": current.loan_id,
-                "as_of": current.as_of.isoformat(),
-                "features": current.features_dict(),
-                "label": {"next_bucket": chain_label, "horizon_months": chain_length},
-            })
+            rows.append(
+                {
+                    "event_id": current.event_id,
+                    "message_id": current.message_id,
+                    "loan_id": current.loan_id,
+                    "as_of": current.as_of.isoformat(),
+                    "features": current.features_dict(),
+                    "label": {"next_bucket": chain_label, "horizon_months": chain_length},
+                }
+            )
     return rows
 
 
@@ -136,14 +142,16 @@ def build_branch_ranking_labels(
             else:
                 branch = "stable"
 
-            rows.append({
-                "event_id": current.event_id,
-                "message_id": current.message_id,
-                "loan_id": current.loan_id,
-                "as_of": current.as_of.isoformat(),
-                "features": current.features_dict(),
-                "label": {"next_bucket": branch, "horizon_months": window},
-            })
+            rows.append(
+                {
+                    "event_id": current.event_id,
+                    "message_id": current.message_id,
+                    "loan_id": current.loan_id,
+                    "as_of": current.as_of.isoformat(),
+                    "features": current.features_dict(),
+                    "label": {"next_bucket": branch, "horizon_months": window},
+                }
+            )
     return rows
 
 
@@ -153,6 +161,7 @@ def add_distractor_features(
 ) -> list[dict[str, Any]]:
     """Add distractor noise to features for robustness testing."""
     import hashlib
+
     distractor_rows = []
     for row in rows:
         new_row = {**row, "features": {**row["features"]}}

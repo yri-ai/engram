@@ -16,12 +16,15 @@ one per month, giving us multi-month transition data from a single file.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
-from typing import IO
+from typing import TYPE_CHECKING
 
 from engram.models.track_b import DelinquencyBucket, TrackBEvent
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from typing import IO
 
 
 @dataclass

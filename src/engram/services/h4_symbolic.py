@@ -9,13 +9,15 @@ Three tightness levels:
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from engram.models.track_b import TrackBEvent
 from engram.services.h1_schema import ENCODERS, induce_motifs
 from engram.services.h3_dataset import build_next_transition_labels
 from engram.services.h3_primitives import TransitionMatrixPrimitive
 from engram.services.track_b_dataset import assign_splits
+
+if TYPE_CHECKING:
+    from engram.models.track_b import TrackBEvent
 
 
 def _build_motif_constraints(
@@ -110,8 +112,8 @@ def run_h4_experiment(
         for i in range(window, len(encoded)):
             event = loan_events[i]
             msg_id = event.message_id
-            pattern = tuple(encoded[i - window : i])
-            eval_patterns[msg_id] = pattern
+            history_pattern = tuple(encoded[i - window : i])
+            eval_patterns[msg_id] = history_pattern
 
     # Evaluate without symbolic pruning
     without_correct = 0
@@ -125,7 +127,11 @@ def run_h4_experiment(
             without_correct += 1
         # A "contradiction" is when the prediction is impossible per motifs
         pattern = eval_patterns.get(row["message_id"])
-        if pattern and pattern in constraints and pred["top_bucket"] not in constraints[pattern]:
+        if (
+            pattern is not None
+            and pattern in constraints
+            and pred["top_bucket"] not in constraints[pattern]
+        ):
             without_contradictions += 1
 
     without_recall = without_correct / total_eval if total_eval else 0.0
@@ -143,8 +149,10 @@ def run_h4_experiment(
             pred = model.predict(row["features"])
             pattern = eval_patterns.get(row["message_id"])
 
-            if pattern:
-                pruned_probs = prune_predictions(pred["probabilities"], pattern, constraints, tightness)
+            if pattern is not None:
+                pruned_probs = prune_predictions(
+                    pred["probabilities"], pattern, constraints, tightness
+                )
                 top = max(pruned_probs, key=lambda k: pruned_probs[k])
 
                 # Check if pruning removed the truth
@@ -171,11 +179,12 @@ def run_h4_experiment(
 
     # Select best tightness: minimize contradictions, keep novelty_prune_rate <= 0.10
     valid = {k: v for k, v in tightness_results.items() if v["novelty_prune_rate"] <= 0.10}
-    selected = min(valid, key=lambda k: valid[k]["contradiction_rate"]) if valid else "loose"
-    tightness_results["selected_tightness"] = selected
+    selected_tightness = (
+        min(valid, key=lambda k: valid[k]["contradiction_rate"]) if valid else "loose"
+    )
 
-    best_recall = tightness_results[selected]["recall"]
-    best_contradiction = tightness_results[selected]["contradiction_rate"]
+    best_recall = tightness_results[selected_tightness]["recall"]
+    best_contradiction = tightness_results[selected_tightness]["contradiction_rate"]
 
     # Error examples: cases where pruning changed the prediction incorrectly
     error_examples = []
@@ -183,17 +192,21 @@ def run_h4_experiment(
         truth = row["label"]["next_bucket"]
         pred = model.predict(row["features"])
         pattern = eval_patterns.get(row["message_id"])
-        if pattern:
-            pruned = prune_predictions(pred["probabilities"], pattern, constraints, selected)
+        if pattern is not None:
+            pruned = prune_predictions(
+                pred["probabilities"], pattern, constraints, selected_tightness
+            )
             pruned_top = max(pruned, key=lambda k: pruned[k])
             if pruned_top != pred["top_bucket"] and pruned_top != truth:
-                error_examples.append({
-                    "message_id": row["message_id"],
-                    "pattern": list(pattern),
-                    "truth": truth,
-                    "unpruned_top": pred["top_bucket"],
-                    "pruned_top": pruned_top,
-                })
+                error_examples.append(
+                    {
+                        "message_id": row["message_id"],
+                        "pattern": list(pattern),
+                        "truth": truth,
+                        "unpruned_top": pred["top_bucket"],
+                        "pruned_top": pruned_top,
+                    }
+                )
                 if len(error_examples) >= 10:
                     break
 
@@ -202,7 +215,10 @@ def run_h4_experiment(
             "contradiction_rate": without_contradiction_rate,
             "recall": without_recall,
         },
-        "tightness": tightness_results,
+        "tightness": {
+            **tightness_results,
+            "selected_tightness": selected_tightness,
+        },
         "contradiction_reduction": without_contradiction_rate - best_contradiction,
         "recall_loss": without_recall - best_recall,
         "error_examples": error_examples,

@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 from engram.services.h3_experiments import run_h3_experiment
 
 
@@ -32,12 +32,14 @@ def _make_events(n_loans: int = 20) -> list[TrackBEvent]:
             buckets = [DelinquencyBucket.CURRENT] * 12
 
         for m, b in enumerate(buckets):
-            events.append(TrackBEvent(
-                loan_id=loan_id,
-                as_of=date(2025, (m % 12) + 1, 1),
-                bucket=b,
-                current_upb=100000.0 - m * 500,
-            ))
+            events.append(
+                TrackBEvent(
+                    loan_id=loan_id,
+                    as_of=date(2025, (m % 12) + 1, 1),
+                    bucket=b,
+                    current_upb=100000.0 - m * 500,
+                )
+            )
     return events
 
 

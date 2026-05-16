@@ -6,15 +6,19 @@ with a restricted feature set, simulating different context budgets.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
+Row = dict[str, Any]
+ProfileFn = Callable[[Row], Row]
 
-def profile_full(row: dict[str, Any]) -> dict[str, Any]:
+
+def profile_full(row: Row) -> Row:
     """Full context — all available features. No filtering."""
     return row
 
 
-def profile_top_k(row: dict[str, Any], k: int = 3) -> dict[str, Any]:
+def profile_top_k(row: Row, k: int = 3) -> Row:
     """Top-K features by pre-computed importance ranking.
 
     For loan delinquency, the ranking is:
@@ -22,8 +26,15 @@ def profile_top_k(row: dict[str, Any], k: int = 3) -> dict[str, Any]:
     2. prev_bucket (momentum signal from Gate 2)
     3. upb_change_pct (balance trajectory)
     """
-    importance_order = ["bucket", "prev_bucket", "upb_change_pct",
-                        "interest_rate", "credit_score", "current_upb", "state"]
+    importance_order = [
+        "bucket",
+        "prev_bucket",
+        "upb_change_pct",
+        "interest_rate",
+        "credit_score",
+        "current_upb",
+        "state",
+    ]
     features = row["features"]
     restricted = {}
     kept = 0
@@ -37,7 +48,7 @@ def profile_top_k(row: dict[str, Any], k: int = 3) -> dict[str, Any]:
     return {**row, "features": restricted}
 
 
-def profile_schema_guided(row: dict[str, Any]) -> dict[str, Any]:
+def profile_schema_guided(row: Row) -> Row:
     """Schema-guided: only features that follow the delinquency schema.
 
     The schema says: delinquency transitions are driven by
@@ -52,7 +63,7 @@ def profile_schema_guided(row: dict[str, Any]) -> dict[str, Any]:
     return {**row, "features": restricted}
 
 
-def profile_minimal_discriminative(row: dict[str, Any]) -> dict[str, Any]:
+def profile_minimal_discriminative(row: Row) -> Row:
     """Minimal discriminative: only the single feature that most
     distinguishes the competing outcomes for *this specific row*.
 
@@ -72,7 +83,7 @@ def profile_minimal_discriminative(row: dict[str, Any]) -> dict[str, Any]:
     return {**row, "features": restricted}
 
 
-PROFILES = {
+PROFILES: dict[str, ProfileFn] = {
     "full": profile_full,
     "top_k": profile_top_k,
     "schema_guided": profile_schema_guided,

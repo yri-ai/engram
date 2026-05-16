@@ -2,8 +2,8 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
-from engram.services.track_b_event_text import render_event_text, build_ingest_payload
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
+from engram.services.track_b_event_text import build_ingest_payload, render_event_text
 
 
 def _sample_event() -> TrackBEvent:

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from engram.models.track_b import TrackBEvent
 from engram.services.h1_schema import evaluate_schema_guided_accuracy, induce_motifs
+
+if TYPE_CHECKING:
+    from engram.models.track_b import TrackBEvent
 
 
 def split_loans(
@@ -38,29 +40,44 @@ def run_h1_experiment(
     train_events, eval_events = split_loans(events, train_frac=0.7, seed=seed)
 
     # Induce motifs from train set
-    motifs = induce_motifs(train_events, window=window, min_support=min_support, granularity="event_only")
+    motifs = induce_motifs(
+        train_events, window=window, min_support=min_support, granularity="event_only"
+    )
 
     # Evaluate on eval set (transfer)
-    transfer_eval = evaluate_schema_guided_accuracy(motifs, eval_events, granularity="event_only", window=window)
+    transfer_eval = evaluate_schema_guided_accuracy(
+        motifs, eval_events, granularity="event_only", window=window
+    )
 
     # In-family baseline: induce on eval set itself (no transfer — upper bound)
-    self_motifs = induce_motifs(eval_events, window=window, min_support=max(1, min_support // 2), granularity="event_only")
-    baseline_eval = evaluate_schema_guided_accuracy(self_motifs, eval_events, granularity="event_only", window=window)
+    self_motifs = induce_motifs(
+        eval_events, window=window, min_support=max(1, min_support // 2), granularity="event_only"
+    )
+    baseline_eval = evaluate_schema_guided_accuracy(
+        self_motifs, eval_events, granularity="event_only", window=window
+    )
 
     transfer_score = (
         transfer_eval["accuracy"] / baseline_eval["accuracy"]
-        if baseline_eval["accuracy"] > 0 else 0.0
+        if baseline_eval["accuracy"] > 0
+        else 0.0
     )
 
     # Schema compactness
     avg_size = sum(m.nodes for m in motifs) / len(motifs) if motifs else 0.0
 
     # Granularity sweep
-    granularity_results = {}
+    granularity_results: dict[str, Any] = {}
     for gran in ["event_only", "event_plus_state", "event_state_gate"]:
-        gran_motifs = induce_motifs(train_events, window=window, min_support=min_support, granularity=gran)
-        gran_eval = evaluate_schema_guided_accuracy(gran_motifs, eval_events, granularity=gran, window=window)
-        gran_avg_nodes = sum(m.nodes for m in gran_motifs) / len(gran_motifs) if gran_motifs else 0.0
+        gran_motifs = induce_motifs(
+            train_events, window=window, min_support=min_support, granularity=gran
+        )
+        gran_eval = evaluate_schema_guided_accuracy(
+            gran_motifs, eval_events, granularity=gran, window=window
+        )
+        gran_avg_nodes = (
+            sum(m.nodes for m in gran_motifs) / len(gran_motifs) if gran_motifs else 0.0
+        )
         granularity_results[gran] = {
             "accuracy": gran_eval["accuracy"],
             "avg_nodes": gran_avg_nodes,

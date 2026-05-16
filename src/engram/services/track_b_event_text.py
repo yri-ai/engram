@@ -6,7 +6,6 @@ from typing import Any
 
 from engram.models.track_b import DelinquencyBucket, TrackBEvent
 
-
 _BUCKET_DESCRIPTIONS = {
     DelinquencyBucket.CURRENT: "current (performing)",
     DelinquencyBucket.D30: "30 days delinquent",

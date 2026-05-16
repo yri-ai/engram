@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import IO, Iterator
+from typing import TYPE_CHECKING
 
 from engram.models.track_b import DelinquencyBucket, TrackBEvent
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from typing import IO
 
 # LoanPerf pipe-delimited field indices
 _IDX_LOAN_SEQ = 6

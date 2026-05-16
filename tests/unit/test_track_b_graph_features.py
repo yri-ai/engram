@@ -2,15 +2,22 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 from engram.services.track_b_graph_features import extract_features_from_event_history
 
 
 def test_extract_features_basic():
     """Features from a single event with no history."""
     events = [
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 10, 1), bucket=DelinquencyBucket.CURRENT, current_upb=100000.0,
-                    interest_rate=7.0, credit_score=720, state="CA"),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 10, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=100000.0,
+            interest_rate=7.0,
+            credit_score=720,
+            state="CA",
+        ),
     ]
     features = extract_features_from_event_history(events, as_of=date(2025, 10, 1), loan_id="LN1")
     assert features["message_id"] == "track-b-LN1-202510"
@@ -26,9 +33,24 @@ def test_extract_features_basic():
 def test_extract_features_with_history():
     """Features capture delinquency transitions over time."""
     events = [
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 8, 1), bucket=DelinquencyBucket.CURRENT, current_upb=100000.0),
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 9, 1), bucket=DelinquencyBucket.CURRENT, current_upb=99500.0),
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 10, 1), bucket=DelinquencyBucket.D30, current_upb=99000.0),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 8, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=100000.0,
+        ),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 9, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=99500.0,
+        ),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 10, 1),
+            bucket=DelinquencyBucket.D30,
+            current_upb=99000.0,
+        ),
     ]
     features = extract_features_from_event_history(events, as_of=date(2025, 10, 1), loan_id="LN1")
     assert features["months_observed"] == 3
@@ -40,7 +62,12 @@ def test_extract_features_with_history():
 def test_extract_features_no_matching_loan():
     """Returns None when loan not found."""
     events = [
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 10, 1), bucket=DelinquencyBucket.CURRENT, current_upb=100000.0),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 10, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=100000.0,
+        ),
     ]
     features = extract_features_from_event_history(events, as_of=date(2025, 10, 1), loan_id="LN999")
     assert features is None

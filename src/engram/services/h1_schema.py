@@ -8,10 +8,12 @@ multiple loans and precedes a specific outcome. Motifs are the
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from engram.models.track_b import TrackBEvent
+if TYPE_CHECKING:
+    from engram.models.track_b import TrackBEvent
 
 
 @dataclass
@@ -69,7 +71,9 @@ def _encode_event_state_gate(event: TrackBEvent, prev: TrackBEvent | None) -> st
     return f"{base}|unk"
 
 
-ENCODERS = {
+Encoder = Callable[[list["TrackBEvent"], int], str]
+
+ENCODERS: dict[str, Encoder] = {
     "event_only": lambda events, i: _encode_event_only(events[i]),
     "event_plus_state": lambda events, i: _encode_event_plus_state(
         events[i], events[i - 1] if i > 0 else None
@@ -118,13 +122,15 @@ def induce_motifs(
     ):
         if len(loans) < min_support:
             continue
-        motifs.append(Motif(
-            motif_id=f"M{idx + 1}",
-            pattern=pattern,
-            outcome=outcome,
-            support_cases=len(loans),
-            loan_ids=sorted(loans)[:10],  # keep sample, not all
-        ))
+        motifs.append(
+            Motif(
+                motif_id=f"M{idx + 1}",
+                pattern=pattern,
+                outcome=outcome,
+                support_cases=len(loans),
+                loan_ids=sorted(loans)[:10],  # keep sample, not all
+            )
+        )
 
     return motifs
 

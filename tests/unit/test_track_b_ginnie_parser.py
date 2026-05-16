@@ -4,8 +4,7 @@ from datetime import date
 from io import BytesIO
 
 from engram.models.track_b import DelinquencyBucket
-from engram.services.track_b_ginnie_parser import parse_loanperf_records, parse_loanperf_line
-
+from engram.services.track_b_ginnie_parser import parse_loanperf_line, parse_loanperf_records
 
 SAMPLE_HEADER = b"HH|202512|Q|20260113|\n"
 SAMPLE_RECORDS = (

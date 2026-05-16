@@ -12,7 +12,6 @@ from typing import Any
 
 from engram.models.track_b import DelinquencyBucket
 
-
 ALL_BUCKETS = [b.value for b in DelinquencyBucket]
 
 

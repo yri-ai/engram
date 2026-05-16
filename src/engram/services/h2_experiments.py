@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from engram.models.h2 import H2Artifact, ProfileResult
-from engram.models.track_b import TrackBEvent
 from engram.services.h2_context import (
     PROFILES,
     compute_competing_cause_discrimination,
@@ -18,16 +17,23 @@ from engram.services.h3_dataset import (
 from engram.services.h3_primitives import LatentTransitionPrimitive, TransitionMatrixPrimitive
 from engram.services.track_b_dataset import assign_splits
 
+if TYPE_CHECKING:
+    from engram.models.track_b import TrackBEvent
 
-def _split(rows: list[dict[str, Any]], train_end: str, eval_end: str):
+
+Row = dict[str, Any]
+Model = TransitionMatrixPrimitive | LatentTransitionPrimitive
+
+
+def _split(rows: list[Row], train_end: str, eval_end: str) -> tuple[list[Row], list[Row]]:
     rows = assign_splits(rows, train_end=train_end, eval_end=eval_end)
     train = [r for r in rows if r["split"] == "train"]
     eval_rows = [r for r in rows if r["split"] == "eval"]
     return train, eval_rows
 
 
-def _add_prev_bucket(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_loan: dict[str, list[dict[str, Any]]] = {}
+def _add_prev_bucket(rows: list[Row]) -> list[Row]:
+    by_loan: dict[str, list[Row]] = {}
     for r in rows:
         by_loan.setdefault(r["loan_id"], []).append(r)
     for loan_rows in by_loan.values():
@@ -37,7 +43,7 @@ def _add_prev_bucket(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def _make_model(profile_name: str):
+def _make_model(profile_name: str) -> Model:
     """Use latent model for profiles that include prev_bucket, basic otherwise."""
     if profile_name in ("full", "top_k", "schema_guided"):
         return LatentTransitionPrimitive()
@@ -96,7 +102,9 @@ def run_h2_experiment(
     _, min_eval = _split(min_rows, train_end, eval_end)
     if min_eval:
         min_model = _make_model("minimal_discriminative")
-        min_train, _ = _split([PROFILES["minimal_discriminative"](r) for r in all_rows], train_end, eval_end)
+        min_train, _ = _split(
+            [PROFILES["minimal_discriminative"](r) for r in all_rows], train_end, eval_end
+        )
         min_model.fit(min_train)
         min_preds = [min_model.predict(r["features"]) for r in min_eval]
         artifact.evidence_gap_coverage = compute_evidence_gaps(min_eval, min_preds)

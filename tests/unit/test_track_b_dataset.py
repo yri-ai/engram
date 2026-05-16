@@ -2,27 +2,63 @@
 
 from datetime import date
 
-from engram.models.track_b import TrackBEvent, DelinquencyBucket
+import pytest
+
+from engram.models.track_b import DelinquencyBucket, TrackBEvent
 from engram.services.track_b_dataset import (
+    LeakageError,
     assign_splits,
     build_labeled_rows,
     validate_no_leakage,
-    LeakageError,
 )
 
 
 def _make_events() -> list[TrackBEvent]:
     """Create a sequence of events for one loan across 4 months."""
     return [
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 10, 1), bucket=DelinquencyBucket.CURRENT, current_upb=100000.0),
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 11, 1), bucket=DelinquencyBucket.CURRENT, current_upb=99500.0),
-        TrackBEvent(loan_id="LN1", as_of=date(2025, 12, 1), bucket=DelinquencyBucket.D30, current_upb=99000.0),
-        TrackBEvent(loan_id="LN1", as_of=date(2026, 1, 1), bucket=DelinquencyBucket.D60, current_upb=98500.0),
-        TrackBEvent(loan_id="LN1", as_of=date(2026, 2, 1), bucket=DelinquencyBucket.D90, current_upb=98000.0),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 10, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=100000.0,
+        ),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 11, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=99500.0,
+        ),
+        TrackBEvent(
+            loan_id="LN1",
+            as_of=date(2025, 12, 1),
+            bucket=DelinquencyBucket.D30,
+            current_upb=99000.0,
+        ),
+        TrackBEvent(
+            loan_id="LN1", as_of=date(2026, 1, 1), bucket=DelinquencyBucket.D60, current_upb=98500.0
+        ),
+        TrackBEvent(
+            loan_id="LN1", as_of=date(2026, 2, 1), bucket=DelinquencyBucket.D90, current_upb=98000.0
+        ),
         # Second loan
-        TrackBEvent(loan_id="LN2", as_of=date(2025, 11, 1), bucket=DelinquencyBucket.CURRENT, current_upb=200000.0),
-        TrackBEvent(loan_id="LN2", as_of=date(2025, 12, 1), bucket=DelinquencyBucket.CURRENT, current_upb=199500.0),
-        TrackBEvent(loan_id="LN2", as_of=date(2026, 1, 1), bucket=DelinquencyBucket.CURRENT, current_upb=199000.0),
+        TrackBEvent(
+            loan_id="LN2",
+            as_of=date(2025, 11, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=200000.0,
+        ),
+        TrackBEvent(
+            loan_id="LN2",
+            as_of=date(2025, 12, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=199500.0,
+        ),
+        TrackBEvent(
+            loan_id="LN2",
+            as_of=date(2026, 1, 1),
+            bucket=DelinquencyBucket.CURRENT,
+            current_upb=199000.0,
+        ),
     ]
 
 
@@ -55,7 +91,6 @@ def test_assign_splits():
     split_rows = assign_splits(rows, train_end="2025-12-31", eval_end="2026-01-31")
     trains = [r for r in split_rows if r["split"] == "train"]
     evals = [r for r in split_rows if r["split"] == "eval"]
-    holdouts = [r for r in split_rows if r["split"] == "holdout"]
     # Train: as_of <= 2025-12-31
     assert all(r["as_of"] <= "2025-12-31" for r in trains)
     # Eval: 2026-01-01 to 2026-01-31
@@ -72,23 +107,37 @@ def test_validate_no_leakage_passes():
 
 def test_validate_no_leakage_catches_duplicate_message_id():
     rows = [
-        {"message_id": "track-b-LN1-202510", "loan_id": "LN1", "as_of": "2025-10-01", "split": "train"},
-        {"message_id": "track-b-LN1-202510", "loan_id": "LN1", "as_of": "2025-10-01", "split": "eval"},
+        {
+            "message_id": "track-b-LN1-202510",
+            "loan_id": "LN1",
+            "as_of": "2025-10-01",
+            "split": "train",
+        },
+        {
+            "message_id": "track-b-LN1-202510",
+            "loan_id": "LN1",
+            "as_of": "2025-10-01",
+            "split": "eval",
+        },
     ]
-    try:
+    with pytest.raises(LeakageError):
         validate_no_leakage(rows)
-        assert False, "Should have raised LeakageError"
-    except LeakageError:
-        pass
 
 
 def test_validate_no_leakage_catches_same_loan_month_across_splits():
     rows = [
-        {"message_id": "track-b-LN1-202510-a", "loan_id": "LN1", "as_of": "2025-10-01", "split": "train"},
-        {"message_id": "track-b-LN1-202510-b", "loan_id": "LN1", "as_of": "2025-10-15", "split": "eval"},
+        {
+            "message_id": "track-b-LN1-202510-a",
+            "loan_id": "LN1",
+            "as_of": "2025-10-01",
+            "split": "train",
+        },
+        {
+            "message_id": "track-b-LN1-202510-b",
+            "loan_id": "LN1",
+            "as_of": "2025-10-15",
+            "split": "eval",
+        },
     ]
-    try:
+    with pytest.raises(LeakageError):
         validate_no_leakage(rows)
-        assert False, "Should have raised LeakageError"
-    except LeakageError:
-        pass

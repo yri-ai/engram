@@ -1,12 +1,12 @@
 """Tests for H2 context profiles and metrics."""
 
 from engram.services.h2_context import (
-    profile_full,
-    profile_top_k,
-    profile_schema_guided,
-    profile_minimal_discriminative,
-    compute_evidence_gaps,
     compute_competing_cause_discrimination,
+    compute_evidence_gaps,
+    profile_full,
+    profile_minimal_discriminative,
+    profile_schema_guided,
+    profile_top_k,
 )
 
 
