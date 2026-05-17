@@ -134,3 +134,67 @@ def test_cli_query_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -
     assert "Active relationships" in result.stdout
     assert stub.search_calls == [("Kendra", "default")]
     assert stub.closed is True
+
+
+def test_cli_forecast_command(runner: CliRunner, tmp_path) -> None:
+    payload = {
+        "evidence": [
+            {
+                "id": "costs",
+                "text": "Freight and commodity cost pressure intensified.",
+                "event_type": "input_cost_pressure",
+                "salience": 0.9,
+            },
+            {
+                "id": "demand",
+                "text": "Demand weakness appeared in the discretionary segment.",
+                "event_type": "demand_weakness",
+                "salience": 0.8,
+            },
+        ]
+    }
+    file_path = tmp_path / "forecast.json"
+    output_path = tmp_path / "forecast-output.json"
+    file_path.write_text(json.dumps(payload))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "forecast",
+            str(file_path),
+            "--objective",
+            "Q4 gross margin risk",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Top branch: margin_compression" in result.stdout
+    written = json.loads(output_path.read_text())
+    assert written["top_branch"] == "margin_compression"
+    assert written["selected_context"][0]["id"] == "costs"
+
+
+def test_cli_forecast_command_accepts_directory(runner: CliRunner, tmp_path) -> None:
+    (tmp_path / "Rent Roll").mkdir()
+    (tmp_path / "Financials").mkdir()
+    (tmp_path / "Rent Roll" / "Sterling Town Center RR - 4.24.2023.xls").write_text("")
+    (tmp_path / "Financials" / "Sterling Town Center T12 - 3.2023.xlsx").write_text("")
+    (tmp_path / "Sterling TC Underwriting.xlsx").write_text("")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "forecast",
+            str(tmp_path),
+            "--objective",
+            "acquisition diligence risk",
+            "--structural-family",
+            "real_estate_acquisition",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "family=real_estate_acquisition" in result.stdout
+    assert "Top branch:" in result.stdout
