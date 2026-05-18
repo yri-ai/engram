@@ -57,6 +57,7 @@ class ForecastResolution(BaseModel):
     """Observed outcome for a forecast question."""
 
     question_id: str
+    run_id: str
     resolved_at: datetime
     outcome_branch: str
     outcome_probability_target: float | None = None

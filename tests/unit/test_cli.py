@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 from typer.testing import CliRunner
 
 from engram.cli import main as cli
+
+if TYPE_CHECKING:
+    from engram.models.forecasting import ForecastQuestion, ForecastResolution, ForecastRun
 
 
 def test_http_client_ingest_messages_sets_defaults() -> None:
@@ -101,6 +106,36 @@ class _StubClient:
         return []
 
     def close(self) -> None:
+        self.closed = True
+
+
+class _StubForecastRepository:
+    def __init__(self) -> None:
+        self.saved_questions: list[ForecastQuestion] = []
+        self.saved_runs: list[tuple[str, ForecastRun]] = []
+        self.saved_resolutions: list[tuple[str, ForecastResolution]] = []
+
+    async def save_question(self, question: ForecastQuestion) -> ForecastQuestion:
+        self.saved_questions.append(question)
+        return question
+
+    async def save_run(self, *, target_entity_id: str, run: ForecastRun) -> ForecastRun:
+        self.saved_runs.append((target_entity_id, run))
+        return run
+
+    async def save_resolution(
+        self, *, target_entity_id: str, resolution: ForecastResolution
+    ) -> ForecastResolution:
+        self.saved_resolutions.append((target_entity_id, resolution))
+        return resolution
+
+
+class _StubForecastContext:
+    def __init__(self, repository: _StubForecastRepository) -> None:
+        self.repository = repository
+        self.closed = False
+
+    async def close(self) -> None:
         self.closed = True
 
 
@@ -198,3 +233,133 @@ def test_cli_forecast_command_accepts_directory(runner: CliRunner, tmp_path) -> 
     assert result.exit_code == 0
     assert "family=real_estate_acquisition" in result.stdout
     assert "Top branch:" in result.stdout
+
+
+def test_cli_create_forecast_question_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+    repository = _StubForecastRepository()
+    context = _StubForecastContext(repository)
+    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "create-forecast-question",
+            "--target-entity-id",
+            "deal-123",
+            "--objective",
+            "Predict the next deal branch",
+            "--structural-family",
+            "real_estate_acquisition",
+            "--forecast-as-of",
+            "2026-05-01T00:00:00Z",
+            "--horizon",
+            "30d",
+            "--resolution-due-at",
+            "2026-06-01T00:00:00Z",
+            "--resolution-criteria",
+            "Resolve when the deal closes, reprices, or terminates",
+            "--allowed-branch",
+            "advance_diligence",
+            "--allowed-branch",
+            "reprice_or_restructure",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert repository.saved_questions
+    saved = repository.saved_questions[0]
+    assert saved.target_entity_id == "deal-123"
+    assert saved.allowed_branch_names == ["advance_diligence", "reprice_or_restructure"]
+    assert context.closed is True
+
+
+def test_cli_run_forecast_command_persists_forecast_run(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner, tmp_path
+) -> None:
+    repository = _StubForecastRepository()
+    context = _StubForecastContext(repository)
+    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    payload = {
+        "evidence": [
+            {
+                "id": "costs",
+                "text": "Freight and commodity cost pressure intensified.",
+                "event_type": "input_cost_pressure",
+                "salience": 0.9,
+            },
+            {
+                "id": "demand",
+                "text": "Demand weakness appeared in the discretionary segment.",
+                "event_type": "demand_weakness",
+                "salience": 0.8,
+            },
+        ]
+    }
+    file_path = tmp_path / "forecast.json"
+    file_path.write_text(json.dumps(payload))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "run-forecast",
+            str(file_path),
+            "--question-id",
+            "fq-1",
+            "--target-entity-id",
+            "deal-123",
+            "--objective",
+            "Q4 gross margin risk",
+            "--structural-family",
+            "margin_analysis",
+            "--forecast-as-of",
+            "2026-05-01T00:00:00Z",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert repository.saved_runs
+    target_entity_id, saved = repository.saved_runs[0]
+    assert target_entity_id == "deal-123"
+    assert saved.question_id == "fq-1"
+    assert saved.top_branch == "margin_compression"
+    assert abs(sum(saved.branch_probabilities.values()) - 1.0) < 1e-6
+    assert context.closed is True
+
+
+def test_cli_resolve_forecast_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+    repository = _StubForecastRepository()
+    context = _StubForecastContext(repository)
+    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "resolve-forecast",
+            "--question-id",
+            "fq-1",
+            "--run-id",
+            "fr-1",
+            "--target-entity-id",
+            "deal-123",
+            "--outcome-branch",
+            "reprice_or_restructure",
+            "--resolved-at",
+            "2026-06-15T00:00:00Z",
+            "--resolved-by",
+            "analyst@example.com",
+            "--source",
+            "ic_memo_2026_06_15",
+            "--resolution-notes",
+            "Seller accepted revised price after diligence.",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert repository.saved_resolutions
+    target_entity_id, saved = repository.saved_resolutions[0]
+    assert target_entity_id == "deal-123"
+    assert saved.question_id == "fq-1"
+    assert saved.run_id == "fr-1"
+    assert saved.resolved_at == datetime(2026, 6, 15, tzinfo=UTC)
+    assert context.closed is True

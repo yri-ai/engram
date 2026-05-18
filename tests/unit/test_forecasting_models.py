@@ -79,6 +79,7 @@ def test_forecast_run_rejects_top_branch_not_in_probabilities() -> None:
 def test_forecast_resolution_and_score_round_trip() -> None:
     resolution = ForecastResolution(
         question_id="fq-1",
+        run_id="fr-1",
         resolved_at=datetime(2026, 6, 15, tzinfo=UTC),
         outcome_branch="closed_repriced",
         outcome_probability_target=1.0,
@@ -97,4 +98,5 @@ def test_forecast_resolution_and_score_round_trip() -> None:
     )
 
     assert resolution.model_dump(mode="json")["outcome_branch"] == "closed_repriced"
+    assert resolution.model_dump(mode="json")["run_id"] == "fr-1"
     assert score.model_dump(mode="json")["sample_count"] == 25
