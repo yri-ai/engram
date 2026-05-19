@@ -624,7 +624,11 @@ async def _run_forecast_impl(
             evidence_gaps=result.evidence_gaps,
             rationale="; ".join(f"{score.branch}: {score.rationale}" for score in result.scores[:2]),
             config=config,
-            metadata={"branch_forecast": payload},
+            metadata={
+                "branch_forecast": payload,
+                "target_entity_id": target_entity_id,
+                "extraction_variant": "default",
+            },
         )
         saved = await context.repository.save_run(target_entity_id=target_entity_id, run=run)
         console.print(json.dumps(saved.model_dump(mode="json"), indent=2))

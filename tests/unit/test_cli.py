@@ -386,6 +386,8 @@ def test_cli_run_forecast_command_persists_forecast_run(
         config={"max_items": 6, "max_tokens": 1200, "min_score": 0.0},
     )
     assert saved.top_branch == "margin_compression"
+    assert saved.metadata["target_entity_id"] == "deal-123"
+    assert saved.metadata["extraction_variant"] == "default"
     assert abs(sum(saved.branch_probabilities.values()) - 1.0) < 1e-6
     assert context.closed is True
 
