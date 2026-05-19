@@ -112,6 +112,7 @@ class _StubClient:
 
 class _StubForecastRepository:
     def __init__(self) -> None:
+        self.listed_questions: list[ForecastQuestion] = []
         self.saved_questions: list[ForecastQuestion] = []
         self.saved_runs: list[tuple[str, ForecastRun]] = []
         self.saved_resolutions: list[tuple[str, ForecastResolution]] = []
@@ -121,6 +122,9 @@ class _StubForecastRepository:
     async def save_question(self, question: ForecastQuestion) -> ForecastQuestion:
         self.saved_questions.append(question)
         return question
+
+    async def list_questions(self, *, target_entity_id: str) -> list[ForecastQuestion]:
+        return [question for question in self.listed_questions if question.target_entity_id == target_entity_id]
 
     async def save_run(self, *, target_entity_id: str, run: ForecastRun) -> ForecastRun:
         self.saved_runs.append((target_entity_id, run))
@@ -436,4 +440,97 @@ def test_cli_score_forecasts_command(monkeypatch: pytest.MonkeyPatch, runner: Cl
     assert payload["aggregate"]["sample_count"] == 1
     assert payload["aggregate"]["top_1_accuracy"] == 1.0
     assert payload["per_question"][0]["question_id"] == "fq-1"
+    assert context.closed is True
+
+
+def test_cli_score_forecasts_command_scores_all_questions_for_target(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner
+) -> None:
+    repository = _StubForecastRepository()
+    repository.listed_questions = [
+        ForecastQuestion(
+            id="fq-1",
+            tenant_id="default",
+            target_entity_id="deal-123",
+            objective="Predict branch one",
+            structural_family="real_estate_acquisition",
+            forecast_as_of=datetime(2026, 5, 1, tzinfo=UTC),
+            horizon="30d",
+            resolution_due_at=datetime(2026, 6, 1, tzinfo=UTC),
+            resolution_criteria="criteria",
+            allowed_branch_names=["advance", "reprice"],
+        ),
+        ForecastQuestion(
+            id="fq-2",
+            tenant_id="default",
+            target_entity_id="deal-123",
+            objective="Predict branch two",
+            structural_family="real_estate_acquisition",
+            forecast_as_of=datetime(2026, 5, 2, tzinfo=UTC),
+            horizon="30d",
+            resolution_due_at=datetime(2026, 6, 2, tzinfo=UTC),
+            resolution_criteria="criteria",
+            allowed_branch_names=["advance", "reprice"],
+        ),
+    ]
+    repository.listed_runs = [
+        ForecastRun(
+            id="fr-1",
+            question_id="fq-1",
+            model_or_engine="branch_forecaster",
+            forecast_as_of=datetime(2026, 5, 1, tzinfo=UTC),
+            branch_probabilities={"advance": 0.8, "reprice": 0.2},
+            top_branch="advance",
+            selected_evidence_ids=["fact-1"],
+            rationale="test rationale",
+            metadata={"target_entity_id": "deal-123", "extraction_variant": "baseline"},
+        ),
+        ForecastRun(
+            id="fr-2",
+            question_id="fq-2",
+            model_or_engine="branch_forecaster",
+            forecast_as_of=datetime(2026, 5, 2, tzinfo=UTC),
+            branch_probabilities={"advance": 0.4, "reprice": 0.6},
+            top_branch="reprice",
+            selected_evidence_ids=["fact-2"],
+            rationale="test rationale",
+            metadata={"target_entity_id": "deal-123", "extraction_variant": "structured_v1"},
+        ),
+    ]
+    repository.listed_resolutions = [
+        cli.ForecastResolution(
+            question_id="fq-1",
+            run_id="fr-1",
+            resolved_at=datetime(2026, 6, 1, tzinfo=UTC),
+            outcome_branch="advance",
+            resolved_by="analyst@example.com",
+            source="memo-1",
+        ),
+        cli.ForecastResolution(
+            question_id="fq-2",
+            run_id="fr-2",
+            resolved_at=datetime(2026, 6, 2, tzinfo=UTC),
+            outcome_branch="advance",
+            resolved_by="analyst@example.com",
+            source="memo-2",
+        ),
+    ]
+    scorer = cli.ForecastScorer()
+    context = _StubForecastContext(repository, scorer=scorer)
+    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "score-forecasts",
+            "--target-entity-id",
+            "deal-123",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["aggregate"]["sample_count"] == 2
+    assert len(payload["per_question"]) == 2
+    assert set(payload["by_extraction_variant"]) == {"baseline", "structured_v1"}
     assert context.closed is True

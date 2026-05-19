@@ -622,7 +622,7 @@ def resolve_forecast(
 @app.command()
 def score_forecasts(
     target_entity_id: str = typer.Option(..., help="Target entity identifier"),
-    question_id: str = typer.Option(..., help="Forecast question identifier"),
+    question_id: str | None = typer.Option(None, help="Optional forecast question identifier"),
     bins: int = typer.Option(10, help="Calibration bin count"),
     tenant_id: str = typer.Option("default", help="Tenant identifier"),
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
@@ -635,13 +635,32 @@ def score_forecasts(
         message_id=message_id,
     )
     try:
-        runs = asyncio.run(
-            context.repository.list_runs(target_entity_id=target_entity_id, question_id=question_id)
-        )
-        resolution = asyncio.run(
-            context.repository.get_resolution(target_entity_id=target_entity_id, question_id=question_id)
-        )
-        resolutions = [resolution] if resolution is not None else []
+        if question_id is not None:
+            question_ids = [question_id]
+        else:
+            questions = asyncio.run(context.repository.list_questions(target_entity_id=target_entity_id))
+            question_ids = [question.id for question in questions]
+
+        runs: list[ForecastRun] = []
+        resolutions: list[ForecastResolution] = []
+        for current_question_id in question_ids:
+            runs.extend(
+                asyncio.run(
+                    context.repository.list_runs(
+                        target_entity_id=target_entity_id,
+                        question_id=current_question_id,
+                    )
+                )
+            )
+            resolution = asyncio.run(
+                context.repository.get_resolution(
+                    target_entity_id=target_entity_id,
+                    question_id=current_question_id,
+                )
+            )
+            if resolution is not None:
+                resolutions.append(resolution)
+
         report = context.scorer.score_runs(runs, resolutions, bins=bins)
         console.print(json.dumps(report, indent=2))
     except (CLIError, ValueError) as exc:

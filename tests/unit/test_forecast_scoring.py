@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -77,3 +79,20 @@ def test_forecast_scorer_emits_per_question_scores() -> None:
     assert score["calibration_bucket"] == "0.8-1.0"
     assert score["expected_calibration_error"] == pytest.approx(0.2)
     assert score["sample_count"] == 1
+
+
+def test_forecast_scorer_reads_fixture_and_emits_traceability_fields() -> None:
+    fixture_path = Path(__file__).resolve().parent.parent / "fixtures" / "forecast_scores.json"
+    payload = json.loads(fixture_path.read_text())
+    runs = [ForecastRun.model_validate(item) for item in payload["runs"]]
+    resolutions = [ForecastResolution.model_validate(item) for item in payload["resolutions"]]
+
+    report = ForecastScorer().score_runs(runs, resolutions, bins=2)
+
+    assert report["aggregate"]["sample_count"] == 3
+    assert set(report["by_extraction_variant"]) == {"baseline", "structured_v1"}
+    question_score = report["per_question"][0]
+    assert question_score["target_entity_id"] == "deal-123"
+    assert question_score["outcome_branch"] in {"advance", "reprice"}
+    assert question_score["resolution_source"].startswith("memo-")
+    assert question_score["extraction_variant"] in {"baseline", "structured_v1"}
