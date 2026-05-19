@@ -199,12 +199,12 @@ def _build_client(api_url: str, timeout: float = 30.0) -> EngramHTTPClient:
     return EngramHTTPClient(api_url=api_url, timeout=timeout)
 
 
-def _open_forecast_context(
+async def _open_forecast_context(
     *, tenant_id: str, conversation_id: str, message_id: str
 ) -> ForecastContext:
     settings = Settings(_env_file=".env")
     store = Neo4jStore(settings)
-    asyncio.run(store.initialize())
+    await store.initialize()
     repository = ForecastRepository(
         store,
         tenant_id=tenant_id,
@@ -474,8 +474,37 @@ def create_forecast_question(
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
     """Persist a canonical forecast question."""
+    asyncio.run(
+        _create_forecast_question_impl(
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=forecast_as_of,
+            horizon=horizon,
+            resolution_due_at=resolution_due_at,
+            resolution_criteria=resolution_criteria,
+            allowed_branch=allowed_branch,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _create_forecast_question_impl(
+    *,
+    target_entity_id: str,
+    objective: str,
+    structural_family: str,
+    forecast_as_of: str,
+    horizon: str,
+    resolution_due_at: str,
+    resolution_criteria: str,
+    allowed_branch: list[str],
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
     message_id = f"forecast-question-{uuid.uuid4()}"
-    context = _open_forecast_context(
+    context = await _open_forecast_context(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         message_id=message_id,
@@ -499,13 +528,13 @@ def create_forecast_question(
             resolution_criteria=resolution_criteria,
             allowed_branch_names=allowed_branch,
         )
-        saved = asyncio.run(context.repository.save_question(question))
+        saved = await context.repository.save_question(question)
         console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
     except (CLIError, ValueError) as exc:
         console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
         raise typer.Exit(code=1) from exc
     finally:
-        asyncio.run(context.close())
+        await context.close()
 
 
 @app.command()
@@ -523,13 +552,44 @@ def run_forecast(
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
     """Run a forecast and persist the immutable run artifact."""
+    asyncio.run(
+        _run_forecast_impl(
+            file=file,
+            question_id=question_id,
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=forecast_as_of,
+            max_items=max_items,
+            max_tokens=max_tokens,
+            min_score=min_score,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _run_forecast_impl(
+    *,
+    file: str,
+    question_id: str,
+    target_entity_id: str,
+    objective: str,
+    structural_family: str,
+    forecast_as_of: str,
+    max_items: int,
+    max_tokens: int,
+    min_score: float,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
     file_path = Path(file)
     if not file_path.exists():
         console.print(f"[bold red]✗ File not found: {file}[/bold red]", file=sys.stderr)
         raise typer.Exit(code=1)
 
     message_id = f"forecast-run-{uuid.uuid4()}"
-    context = _open_forecast_context(
+    context = await _open_forecast_context(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         message_id=message_id,
@@ -566,13 +626,13 @@ def run_forecast(
             config=config,
             metadata={"branch_forecast": payload},
         )
-        saved = asyncio.run(context.repository.save_run(target_entity_id=target_entity_id, run=run))
+        saved = await context.repository.save_run(target_entity_id=target_entity_id, run=run)
         console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
     except (CLIError, ValueError) as exc:
         console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
         raise typer.Exit(code=1) from exc
     finally:
-        asyncio.run(context.close())
+        await context.close()
 
 
 @app.command()
@@ -589,8 +649,37 @@ def resolve_forecast(
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
     """Persist an observed resolution for a forecast question."""
+    asyncio.run(
+        _resolve_forecast_impl(
+            question_id=question_id,
+            run_id=run_id,
+            target_entity_id=target_entity_id,
+            outcome_branch=outcome_branch,
+            resolved_at=resolved_at,
+            resolved_by=resolved_by,
+            source=source,
+            resolution_notes=resolution_notes,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _resolve_forecast_impl(
+    *,
+    question_id: str,
+    run_id: str,
+    target_entity_id: str,
+    outcome_branch: str,
+    resolved_at: str,
+    resolved_by: str,
+    source: str,
+    resolution_notes: str | None,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
     message_id = f"forecast-resolution-{uuid.uuid4()}"
-    context = _open_forecast_context(
+    context = await _open_forecast_context(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         message_id=message_id,
@@ -605,18 +694,16 @@ def resolve_forecast(
             resolved_by=resolved_by,
             source=source,
         )
-        saved = asyncio.run(
-            context.repository.save_resolution(
-                target_entity_id=target_entity_id,
-                resolution=resolution,
-            )
+        saved = await context.repository.save_resolution(
+            target_entity_id=target_entity_id,
+            resolution=resolution,
         )
         console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
     except (CLIError, ValueError) as exc:
         console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
         raise typer.Exit(code=1) from exc
     finally:
-        asyncio.run(context.close())
+        await context.close()
 
 
 @app.command()
@@ -628,8 +715,27 @@ def score_forecasts(
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
     """Score persisted forecast runs against stored resolutions."""
+    asyncio.run(
+        _score_forecasts_impl(
+            target_entity_id=target_entity_id,
+            question_id=question_id,
+            bins=bins,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _score_forecasts_impl(
+    *,
+    target_entity_id: str,
+    question_id: str | None,
+    bins: int,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
     message_id = f"forecast-score-{uuid.uuid4()}"
-    context = _open_forecast_context(
+    context = await _open_forecast_context(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         message_id=message_id,
@@ -638,25 +744,21 @@ def score_forecasts(
         if question_id is not None:
             question_ids = [question_id]
         else:
-            questions = asyncio.run(context.repository.list_questions(target_entity_id=target_entity_id))
+            questions = await context.repository.list_questions(target_entity_id=target_entity_id)
             question_ids = [question.id for question in questions]
 
         runs: list[ForecastRun] = []
         resolutions: list[ForecastResolution] = []
         for current_question_id in question_ids:
             runs.extend(
-                asyncio.run(
-                    context.repository.list_runs(
-                        target_entity_id=target_entity_id,
-                        question_id=current_question_id,
-                    )
-                )
-            )
-            resolution = asyncio.run(
-                context.repository.get_resolution(
+                await context.repository.list_runs(
                     target_entity_id=target_entity_id,
                     question_id=current_question_id,
                 )
+            )
+            resolution = await context.repository.get_resolution(
+                target_entity_id=target_entity_id,
+                question_id=current_question_id,
             )
             if resolution is not None:
                 resolutions.append(resolution)
@@ -667,7 +769,7 @@ def score_forecasts(
         console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
         raise typer.Exit(code=1) from exc
     finally:
-        asyncio.run(context.close())
+        await context.close()
 
 
 def _render_forecast(result: dict[str, Any]) -> None:

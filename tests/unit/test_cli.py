@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -158,6 +159,29 @@ class _StubForecastContext:
         self.closed = True
 
 
+class _LoopBoundForecastRepository(_StubForecastRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bound_loop = asyncio.get_running_loop()
+
+    def _assert_same_loop(self) -> None:
+        assert asyncio.get_running_loop() is self.bound_loop
+
+    async def save_question(self, question: ForecastQuestion) -> ForecastQuestion:
+        self._assert_same_loop()
+        return await super().save_question(question)
+
+
+class _LoopBoundForecastContext(_StubForecastContext):
+    def __init__(self) -> None:
+        super().__init__(_LoopBoundForecastRepository())
+        self.bound_loop = asyncio.get_running_loop()
+
+    async def close(self) -> None:
+        assert asyncio.get_running_loop() is self.bound_loop
+        await super().close()
+
+
 @pytest.fixture()
 def runner() -> CliRunner:
     return CliRunner()
@@ -257,7 +281,11 @@ def test_cli_forecast_command_accepts_directory(runner: CliRunner, tmp_path) -> 
 def test_cli_create_forecast_question_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
     repository = _StubForecastRepository()
     context = _StubForecastContext(repository)
-    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    async def open_context(**_kwargs):  # type: ignore[no-untyped-def]
+        return context
+
+    monkeypatch.setattr(cli, "_open_forecast_context", open_context)
 
     result = runner.invoke(
         cli.app,
@@ -303,7 +331,11 @@ def test_cli_run_forecast_command_persists_forecast_run(
 ) -> None:
     repository = _StubForecastRepository()
     context = _StubForecastContext(repository)
-    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    async def open_context(**_kwargs):  # type: ignore[no-untyped-def]
+        return context
+
+    monkeypatch.setattr(cli, "_open_forecast_context", open_context)
 
     payload = {
         "evidence": [
@@ -361,7 +393,11 @@ def test_cli_run_forecast_command_persists_forecast_run(
 def test_cli_resolve_forecast_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
     repository = _StubForecastRepository()
     context = _StubForecastContext(repository)
-    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    async def open_context(**_kwargs):  # type: ignore[no-untyped-def]
+        return context
+
+    monkeypatch.setattr(cli, "_open_forecast_context", open_context)
 
     result = runner.invoke(
         cli.app,
@@ -422,7 +458,11 @@ def test_cli_score_forecasts_command(monkeypatch: pytest.MonkeyPatch, runner: Cl
     ]
     scorer = cli.ForecastScorer()
     context = _StubForecastContext(repository, scorer=scorer)
-    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    async def open_context(**_kwargs):  # type: ignore[no-untyped-def]
+        return context
+
+    monkeypatch.setattr(cli, "_open_forecast_context", open_context)
 
     result = runner.invoke(
         cli.app,
@@ -517,7 +557,11 @@ def test_cli_score_forecasts_command_scores_all_questions_for_target(
     ]
     scorer = cli.ForecastScorer()
     context = _StubForecastContext(repository, scorer=scorer)
-    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    async def open_context(**_kwargs):  # type: ignore[no-untyped-def]
+        return context
+
+    monkeypatch.setattr(cli, "_open_forecast_context", open_context)
 
     result = runner.invoke(
         cli.app,
@@ -534,3 +578,37 @@ def test_cli_score_forecasts_command_scores_all_questions_for_target(
     assert len(payload["per_question"]) == 2
     assert set(payload["by_extraction_variant"]) == {"baseline", "structured_v1"}
     assert context.closed is True
+
+
+def test_cli_create_forecast_question_uses_single_event_loop(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner
+) -> None:
+    async def open_context(**_kwargs):  # type: ignore[no-untyped-def]
+        return _LoopBoundForecastContext()
+
+    monkeypatch.setattr(cli, "_open_forecast_context", open_context)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "create-forecast-question",
+            "--target-entity-id",
+            "deal-123",
+            "--objective",
+            "Predict the next deal branch",
+            "--structural-family",
+            "real_estate_acquisition",
+            "--forecast-as-of",
+            "2026-05-01T00:00:00Z",
+            "--horizon",
+            "30d",
+            "--resolution-due-at",
+            "2026-06-01T00:00:00Z",
+            "--resolution-criteria",
+            "Resolve when the deal closes, reprices, or terminates",
+            "--allowed-branch",
+            "advance_diligence",
+        ],
+    )
+
+    assert result.exit_code == 0
