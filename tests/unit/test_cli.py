@@ -115,6 +115,8 @@ class _StubForecastRepository:
         self.saved_questions: list[ForecastQuestion] = []
         self.saved_runs: list[tuple[str, ForecastRun]] = []
         self.saved_resolutions: list[tuple[str, ForecastResolution]] = []
+        self.listed_runs: list[ForecastRun] = []
+        self.listed_resolutions: list[ForecastResolution] = []
 
     async def save_question(self, question: ForecastQuestion) -> ForecastQuestion:
         self.saved_questions.append(question)
@@ -130,10 +132,22 @@ class _StubForecastRepository:
         self.saved_resolutions.append((target_entity_id, resolution))
         return resolution
 
+    async def list_runs(self, *, target_entity_id: str, question_id: str) -> list[ForecastRun]:
+        return [run for run in self.listed_runs if run.question_id == question_id]
+
+    async def get_resolution(
+        self, *, target_entity_id: str, question_id: str
+    ) -> ForecastResolution | None:
+        for resolution in self.listed_resolutions:
+            if resolution.question_id == question_id:
+                return resolution
+        return None
+
 
 class _StubForecastContext:
-    def __init__(self, repository: _StubForecastRepository) -> None:
+    def __init__(self, repository: _StubForecastRepository, scorer=None) -> None:  # type: ignore[no-untyped-def]
         self.repository = repository
+        self.scorer = scorer
         self.closed = False
 
     async def close(self) -> None:
@@ -375,4 +389,51 @@ def test_cli_resolve_forecast_command(monkeypatch: pytest.MonkeyPatch, runner: C
     assert saved.question_id == "fq-1"
     assert saved.run_id == "fr-1"
     assert saved.resolved_at == datetime(2026, 6, 15, tzinfo=UTC)
+    assert context.closed is True
+
+
+def test_cli_score_forecasts_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+    repository = _StubForecastRepository()
+    repository.listed_runs = [
+        ForecastRun(
+            id="fr-1",
+            question_id="fq-1",
+            model_or_engine="branch_forecaster",
+            forecast_as_of=datetime(2026, 5, 1, tzinfo=UTC),
+            branch_probabilities={"advance": 0.8, "reprice": 0.2},
+            top_branch="advance",
+            selected_evidence_ids=["fact-1"],
+            rationale="test rationale",
+        )
+    ]
+    repository.listed_resolutions = [
+        cli.ForecastResolution(
+            question_id="fq-1",
+            run_id="fr-1",
+            resolved_at=datetime(2026, 6, 1, tzinfo=UTC),
+            outcome_branch="advance",
+            resolved_by="analyst@example.com",
+            source="memo",
+        )
+    ]
+    scorer = cli.ForecastScorer()
+    context = _StubForecastContext(repository, scorer=scorer)
+    monkeypatch.setattr(cli, "_open_forecast_context", lambda **_kwargs: context)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "score-forecasts",
+            "--target-entity-id",
+            "deal-123",
+            "--question-id",
+            "fq-1",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["aggregate"]["sample_count"] == 1
+    assert payload["aggregate"]["top_1_accuracy"] == 1.0
+    assert payload["per_question"][0]["question_id"] == "fq-1"
     assert context.closed is True

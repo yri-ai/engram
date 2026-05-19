@@ -25,6 +25,7 @@ from engram.models.branch_forecasting import ContextBudget
 from engram.models.forecasting import ForecastQuestion, ForecastResolution, ForecastRun
 from engram.services.branch_forecasting import BranchForecaster, evidence_from_path
 from engram.services.forecast_repository import ForecastRepository
+from engram.services.forecast_scoring import ForecastScorer
 from engram.storage.neo4j import Neo4jStore
 
 app = typer.Typer(name="engram", help="Temporal knowledge graph engine for AI memory")
@@ -54,6 +55,7 @@ class ForecastContext:
 
     store: Neo4jStore
     repository: ForecastRepository
+    scorer: ForecastScorer
 
     async def close(self) -> None:
         await self.store.close()
@@ -209,7 +211,7 @@ def _open_forecast_context(
         conversation_id=conversation_id,
         message_id=message_id,
     )
-    return ForecastContext(store=store, repository=repository)
+    return ForecastContext(store=store, repository=repository, scorer=ForecastScorer())
 
 
 def _parse_iso8601(value: str) -> datetime:
@@ -542,6 +544,7 @@ def run_forecast(
             structural_family=structural_family,
             evidence=evidence,
             budget=ContextBudget(max_items=max_items, max_tokens=max_tokens, min_score=min_score),
+            forecast_as_of=parsed_forecast_as_of,
         )
         payload = result.model_dump(mode="json")
         config = {"max_items": max_items, "max_tokens": max_tokens, "min_score": min_score}
@@ -609,6 +612,38 @@ def resolve_forecast(
             )
         )
         console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        asyncio.run(context.close())
+
+
+@app.command()
+def score_forecasts(
+    target_entity_id: str = typer.Option(..., help="Target entity identifier"),
+    question_id: str = typer.Option(..., help="Forecast question identifier"),
+    bins: int = typer.Option(10, help="Calibration bin count"),
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Score persisted forecast runs against stored resolutions."""
+    message_id = f"forecast-score-{uuid.uuid4()}"
+    context = _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        runs = asyncio.run(
+            context.repository.list_runs(target_entity_id=target_entity_id, question_id=question_id)
+        )
+        resolution = asyncio.run(
+            context.repository.get_resolution(target_entity_id=target_entity_id, question_id=question_id)
+        )
+        resolutions = [resolution] if resolution is not None else []
+        report = context.scorer.score_runs(runs, resolutions, bins=bins)
+        console.print(json.dumps(report, indent=2))
     except (CLIError, ValueError) as exc:
         console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
         raise typer.Exit(code=1) from exc
