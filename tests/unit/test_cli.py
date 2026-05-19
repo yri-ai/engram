@@ -11,9 +11,10 @@ import pytest
 from typer.testing import CliRunner
 
 from engram.cli import main as cli
+from engram.models.forecasting import ForecastQuestion, ForecastRun
 
 if TYPE_CHECKING:
-    from engram.models.forecasting import ForecastQuestion, ForecastResolution, ForecastRun
+    from engram.models.forecasting import ForecastResolution
 
 
 def test_http_client_ingest_messages_sets_defaults() -> None:
@@ -270,6 +271,12 @@ def test_cli_create_forecast_question_command(monkeypatch: pytest.MonkeyPatch, r
     saved = repository.saved_questions[0]
     assert saved.target_entity_id == "deal-123"
     assert saved.allowed_branch_names == ["advance_diligence", "reprice_or_restructure"]
+    assert saved.id == ForecastQuestion.build_id(
+        tenant_id="default",
+        target_entity_id="deal-123",
+        objective="Predict the next deal branch",
+        forecast_as_of=datetime(2026, 5, 1, tzinfo=UTC),
+    )
     assert context.closed is True
 
 
@@ -322,6 +329,12 @@ def test_cli_run_forecast_command_persists_forecast_run(
     target_entity_id, saved = repository.saved_runs[0]
     assert target_entity_id == "deal-123"
     assert saved.question_id == "fq-1"
+    assert saved.id == ForecastRun.build_id(
+        question_id="fq-1",
+        model_or_engine="branch_forecaster",
+        forecast_as_of=datetime(2026, 5, 1, tzinfo=UTC),
+        config={"max_items": 6, "max_tokens": 1200, "min_score": 0.0},
+    )
     assert saved.top_branch == "margin_compression"
     assert abs(sum(saved.branch_probabilities.values()) - 1.0) < 1e-6
     assert context.closed is True

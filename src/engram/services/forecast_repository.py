@@ -55,7 +55,10 @@ class ForecastRepository:
             self._build_fact(
                 target_entity_id,
                 self.RESOLUTION_FACT_KEY,
-                resolution.question_id,
+                ForecastResolution.build_id(
+                    question_id=resolution.question_id,
+                    run_id=resolution.run_id,
+                ),
                 resolution,
             )
         )

@@ -134,3 +134,56 @@ async def test_repository_saves_and_gets_resolution(store: MemoryStore) -> None:
     assert loaded is not None
     assert loaded.run_id == "fr-1"
     assert loaded.outcome_branch == "reprice_or_restructure"
+
+
+async def test_repository_preserves_layer1_run_artifacts(store: MemoryStore) -> None:
+    deal = _make_deal_entity()
+    await store.upsert_entity(deal)
+    repository = ForecastRepository(
+        store,
+        tenant_id="tenant-1",
+        conversation_id="forecasting",
+        message_id="forecast-message-1",
+    )
+
+    await repository.save_question(_make_question())
+    run = _make_run().model_copy(
+        update={
+            "metadata": {
+                "branch_forecast": {
+                    "selected_context": [
+                        {"id": "fact-1", "source": "/tmp/rent-roll.xlsx"},
+                        {"id": "fact-2", "source": "/tmp/t12.xlsx"},
+                    ]
+                }
+            }
+        }
+    )
+
+    await repository.save_run(target_entity_id=deal.id, run=run)
+    runs = await repository.list_runs(target_entity_id=deal.id, question_id="fq-1")
+
+    assert len(runs) == 1
+    assert runs[0].forecast_as_of == datetime(2026, 5, 1, tzinfo=UTC)
+    assert runs[0].selected_evidence_ids == ["fact-1", "fact-2"]
+    assert runs[0].metadata["branch_forecast"]["selected_context"][0]["source"] == "/tmp/rent-roll.xlsx"
+
+
+async def test_repository_reuses_deterministic_resolution_record_id(store: MemoryStore) -> None:
+    deal = _make_deal_entity()
+    await store.upsert_entity(deal)
+    repository = ForecastRepository(
+        store,
+        tenant_id="tenant-1",
+        conversation_id="forecasting",
+        message_id="forecast-message-1",
+    )
+
+    await repository.save_question(_make_question())
+    resolution = _make_resolution()
+
+    await repository.save_resolution(target_entity_id=deal.id, resolution=resolution)
+    await repository.save_resolution(target_entity_id=deal.id, resolution=resolution)
+
+    facts = await store.get_facts("tenant-1", deal.id, fact_key=ForecastRepository.RESOLUTION_FACT_KEY)
+    assert len(facts) == 1

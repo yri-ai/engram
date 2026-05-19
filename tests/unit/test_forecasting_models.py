@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 
 import pytest
@@ -100,3 +101,36 @@ def test_forecast_resolution_and_score_round_trip() -> None:
     assert resolution.model_dump(mode="json")["outcome_branch"] == "closed_repriced"
     assert resolution.model_dump(mode="json")["run_id"] == "fr-1"
     assert score.model_dump(mode="json")["sample_count"] == 25
+
+
+def test_forecast_ids_are_deterministic() -> None:
+    forecast_as_of = datetime(2026, 5, 1, tzinfo=UTC)
+
+    question_id = ForecastQuestion.build_id(
+        tenant_id="tenant-1",
+        target_entity_id="deal-123",
+        objective="Predict the next deal branch",
+        forecast_as_of=forecast_as_of,
+    )
+    run_id = ForecastRun.build_id(
+        question_id=question_id,
+        model_or_engine="branch-forecaster-v1",
+        forecast_as_of=forecast_as_of,
+        config={"max_items": 6, "max_tokens": 1200},
+    )
+
+    assert question_id == ForecastQuestion.build_id(
+        tenant_id="tenant-1",
+        target_entity_id="deal-123",
+        objective="Predict the next deal branch",
+        forecast_as_of=forecast_as_of,
+    )
+    assert run_id == ForecastRun.build_id(
+        question_id=question_id,
+        model_or_engine="branch-forecaster-v1",
+        forecast_as_of=forecast_as_of,
+        config={"max_tokens": 1200, "max_items": 6},
+    )
+    assert ForecastResolution.build_id(question_id=question_id, run_id=run_id).endswith(
+        hashlib.sha256(f"{question_id}|{run_id}".encode()).hexdigest()[:16]
+    )

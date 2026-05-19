@@ -479,13 +479,19 @@ def create_forecast_question(
         message_id=message_id,
     )
     try:
+        parsed_forecast_as_of = _parse_iso8601(forecast_as_of)
         question = ForecastQuestion(
-            id=f"fq-{uuid.uuid4()}",
+            id=ForecastQuestion.build_id(
+                tenant_id=tenant_id,
+                target_entity_id=target_entity_id,
+                objective=objective,
+                forecast_as_of=parsed_forecast_as_of,
+            ),
             tenant_id=tenant_id,
             target_entity_id=target_entity_id,
             objective=objective,
             structural_family=structural_family,
-            forecast_as_of=_parse_iso8601(forecast_as_of),
+            forecast_as_of=parsed_forecast_as_of,
             horizon=horizon,
             resolution_due_at=_parse_iso8601(resolution_due_at),
             resolution_criteria=resolution_criteria,
@@ -527,6 +533,7 @@ def run_forecast(
         message_id=message_id,
     )
     try:
+        parsed_forecast_as_of = _parse_iso8601(forecast_as_of)
         evidence = evidence_from_path(file_path)
         if not evidence:
             raise CLIError("No forecast evidence found")
@@ -537,16 +544,23 @@ def run_forecast(
             budget=ContextBudget(max_items=max_items, max_tokens=max_tokens, min_score=min_score),
         )
         payload = result.model_dump(mode="json")
+        config = {"max_items": max_items, "max_tokens": max_tokens, "min_score": min_score}
         run = ForecastRun(
-            id=f"fr-{uuid.uuid4()}",
+            id=ForecastRun.build_id(
+                question_id=question_id,
+                model_or_engine="branch_forecaster",
+                forecast_as_of=parsed_forecast_as_of,
+                config=config,
+            ),
             question_id=question_id,
             model_or_engine="branch_forecaster",
-            forecast_as_of=_parse_iso8601(forecast_as_of),
+            forecast_as_of=parsed_forecast_as_of,
             branch_probabilities=_branch_probabilities_from_scores(payload),
             top_branch=result.top_branch,
             selected_evidence_ids=[item["id"] for item in payload["selected_context"]],
             evidence_gaps=result.evidence_gaps,
             rationale="; ".join(f"{score.branch}: {score.rationale}" for score in result.scores[:2]),
+            config=config,
             metadata={"branch_forecast": payload},
         )
         saved = asyncio.run(context.repository.save_run(target_entity_id=target_entity_id, run=run))
