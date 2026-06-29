@@ -416,9 +416,7 @@ def query(
 def forecast(
     file: str = typer.Argument(..., help="Path to forecast evidence JSON/NDJSON or directory"),
     objective: str = typer.Option(..., help="Decision objective to forecast against"),
-    structural_family: str = typer.Option(
-        "margin_analysis", help="Forecast structural family"
-    ),
+    structural_family: str = typer.Option("margin_analysis", help="Forecast structural family"),
     max_items: int = typer.Option(6, help="Maximum evidence items to use"),
     max_tokens: int = typer.Option(1200, help="Maximum approximate context tokens"),
     min_score: float = typer.Option(0.0, help="Minimum evidence salience to consider"),
@@ -622,7 +620,9 @@ async def _run_forecast_impl(
             top_branch=result.top_branch,
             selected_evidence_ids=[item["id"] for item in payload["selected_context"]],
             evidence_gaps=result.evidence_gaps,
-            rationale="; ".join(f"{score.branch}: {score.rationale}" for score in result.scores[:2]),
+            rationale="; ".join(
+                f"{score.branch}: {score.rationale}" for score in result.scores[:2]
+            ),
             config=config,
             metadata={
                 "branch_forecast": payload,
@@ -801,7 +801,9 @@ def _render_forecast(result: dict[str, Any]) -> None:
     console.print(table)
 
     if result["evidence_gaps"]:
-        console.print("[bold yellow]Evidence gaps:[/bold yellow] " + ", ".join(result["evidence_gaps"]))
+        console.print(
+            "[bold yellow]Evidence gaps:[/bold yellow] " + ", ".join(result["evidence_gaps"])
+        )
 
 
 def _resolve_entity(

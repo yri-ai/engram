@@ -53,7 +53,9 @@ class ForecastScorer:
                     brier_score=brier_score,
                     top_1_correct=run.top_branch == resolution.outcome_branch,
                     calibration_bucket=self._bucket_label(top_confidence, bins),
-                    expected_calibration_error=abs(top_confidence - float(run.top_branch == resolution.outcome_branch)),
+                    expected_calibration_error=abs(
+                        top_confidence - float(run.top_branch == resolution.outcome_branch)
+                    ),
                     sample_count=1,
                 )
             )
@@ -113,7 +115,9 @@ class ForecastScorer:
 
         ece = 0.0
         for bucket_scores in buckets.values():
-            avg_error = sum(score.expected_calibration_error for score in bucket_scores) / len(bucket_scores)
+            avg_error = sum(score.expected_calibration_error for score in bucket_scores) / len(
+                bucket_scores
+            )
             ece += (len(bucket_scores) / sample_count) * avg_error
 
         return {

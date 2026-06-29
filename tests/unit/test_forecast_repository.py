@@ -166,7 +166,10 @@ async def test_repository_preserves_layer1_run_artifacts(store: MemoryStore) -> 
     assert len(runs) == 1
     assert runs[0].forecast_as_of == datetime(2026, 5, 1, tzinfo=UTC)
     assert runs[0].selected_evidence_ids == ["fact-1", "fact-2"]
-    assert runs[0].metadata["branch_forecast"]["selected_context"][0]["source"] == "/tmp/rent-roll.xlsx"
+    assert (
+        runs[0].metadata["branch_forecast"]["selected_context"][0]["source"]
+        == "/tmp/rent-roll.xlsx"
+    )
 
 
 async def test_repository_reuses_deterministic_resolution_record_id(store: MemoryStore) -> None:
@@ -185,5 +188,7 @@ async def test_repository_reuses_deterministic_resolution_record_id(store: Memor
     await repository.save_resolution(target_entity_id=deal.id, resolution=resolution)
     await repository.save_resolution(target_entity_id=deal.id, resolution=resolution)
 
-    facts = await store.get_facts("tenant-1", deal.id, fact_key=ForecastRepository.RESOLUTION_FACT_KEY)
+    facts = await store.get_facts(
+        "tenant-1", deal.id, fact_key=ForecastRepository.RESOLUTION_FACT_KEY
+    )
     assert len(facts) == 1

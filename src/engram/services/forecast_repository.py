@@ -32,19 +32,29 @@ class ForecastRepository:
         self._message_id = message_id
 
     async def save_question(self, question: ForecastQuestion) -> ForecastQuestion:
-        await self._store.save_fact(self._build_fact(question.target_entity_id, self.QUESTION_FACT_KEY, question.id, question))
+        await self._store.save_fact(
+            self._build_fact(
+                question.target_entity_id, self.QUESTION_FACT_KEY, question.id, question
+            )
+        )
         return question
 
     async def list_questions(self, *, target_entity_id: str) -> list[ForecastQuestion]:
-        facts = await self._store.get_facts(self._tenant_id, target_entity_id, fact_key=self.QUESTION_FACT_KEY)
+        facts = await self._store.get_facts(
+            self._tenant_id, target_entity_id, fact_key=self.QUESTION_FACT_KEY
+        )
         return [ForecastQuestion.model_validate(self._payload_from_fact(fact)) for fact in facts]
 
     async def save_run(self, *, target_entity_id: str, run: ForecastRun) -> ForecastRun:
-        await self._store.save_fact(self._build_fact(target_entity_id, self.RUN_FACT_KEY, run.id, run))
+        await self._store.save_fact(
+            self._build_fact(target_entity_id, self.RUN_FACT_KEY, run.id, run)
+        )
         return run
 
     async def list_runs(self, *, target_entity_id: str, question_id: str) -> list[ForecastRun]:
-        facts = await self._store.get_facts(self._tenant_id, target_entity_id, fact_key=self.RUN_FACT_KEY)
+        facts = await self._store.get_facts(
+            self._tenant_id, target_entity_id, fact_key=self.RUN_FACT_KEY
+        )
         runs = [ForecastRun.model_validate(self._payload_from_fact(fact)) for fact in facts]
         return [run for run in runs if run.question_id == question_id]
 

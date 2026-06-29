@@ -125,7 +125,11 @@ class _StubForecastRepository:
         return question
 
     async def list_questions(self, *, target_entity_id: str) -> list[ForecastQuestion]:
-        return [question for question in self.listed_questions if question.target_entity_id == target_entity_id]
+        return [
+            question
+            for question in self.listed_questions
+            if question.target_entity_id == target_entity_id
+        ]
 
     async def save_run(self, *, target_entity_id: str, run: ForecastRun) -> ForecastRun:
         self.saved_runs.append((target_entity_id, run))
@@ -278,7 +282,9 @@ def test_cli_forecast_command_accepts_directory(runner: CliRunner, tmp_path) -> 
     assert "Top branch:" in result.stdout
 
 
-def test_cli_create_forecast_question_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+def test_cli_create_forecast_question_command(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner
+) -> None:
     repository = _StubForecastRepository()
     context = _StubForecastContext(repository)
 
