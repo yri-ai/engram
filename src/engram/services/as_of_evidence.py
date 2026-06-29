@@ -144,7 +144,9 @@ class MemoryGraphEvidenceAdapter:
         excluded_counts.update(relationship_exclusions)
 
         related_ids = {
-            relationship.target_id if relationship.source_id == target_id else relationship.source_id
+            relationship.target_id
+            if relationship.source_id == target_id
+            else relationship.source_id
             for relationship in relationships
         }
         facts_by_id = {fact.id: fact for fact in direct_facts}
@@ -204,7 +206,9 @@ class AsOfEvidenceCompiler:
             question.forecast_as_of,
             packet.supersession_scan_facts or packet.facts,
         )
-        relationship_items = [_relationship_to_item(relationship) for relationship in packet.relationships]
+        relationship_items = [
+            _relationship_to_item(relationship) for relationship in packet.relationships
+        ]
         evidence_items = sorted(fact_items + relationship_items, key=lambda item: item.id)
 
         return EvidenceDossier(
@@ -262,7 +266,10 @@ class AsOfEvidenceCompiler:
                     supersession_status=supersession_status,
                     supersedes_id=_fact_item_id_from_raw(fact.supersedes_fact_id),
                     superseded_by_id=superseded_by_id,
-                    contradicts_ids=[_fact_item_id_from_raw(value) for value in fact.metadata.get("contradicts_ids", [])],
+                    contradicts_ids=[
+                        _fact_item_id_from_raw(value)
+                        for value in fact.metadata.get("contradicts_ids", [])
+                    ],
                     confidence=fact.confidence,
                     metadata={
                         "entity_id": fact.entity_id,
@@ -301,7 +308,9 @@ def _relationship_to_item(relationship: Relationship) -> EvidenceItem:
     )
 
 
-def _exclusion_reason(record: Fact | Relationship, as_of: datetime, *, question_id: str | None) -> str | None:
+def _exclusion_reason(
+    record: Fact | Relationship, as_of: datetime, *, question_id: str | None
+) -> str | None:
     if record.recorded_from > as_of:
         return "future_record_time"
     if record.recorded_to is not None and record.recorded_to <= as_of:

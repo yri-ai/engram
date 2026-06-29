@@ -74,7 +74,9 @@ def test_save_load_and_list_resolution_validates_branch_against_question(tmp_pat
     assert repository.load_resolution(resolution.id) == resolution
     assert repository.list_resolutions() == [resolution]
 
-    invalid_resolution = resolution.model_copy(update={"id": "resolution-bad", "resolved_branch": "maybe"})
+    invalid_resolution = resolution.model_copy(
+        update={"id": "resolution-bad", "resolved_branch": "maybe"}
+    )
     with pytest.raises(ValueError, match="resolved branch must be one of the question branches"):
         repository.save_resolution(invalid_resolution)
 

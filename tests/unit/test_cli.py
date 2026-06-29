@@ -412,7 +412,9 @@ def test_forecast_dossier_compile_rejects_future_recorded_json_evidence(
     assert "recorded after forecast_as_of" in result.stdout
 
 
-def test_forecast_factory_seams_are_used(monkeypatch: pytest.MonkeyPatch, runner: CliRunner, tmp_path) -> None:
+def test_forecast_factory_seams_are_used(
+    monkeypatch: pytest.MonkeyPatch, runner: CliRunner, tmp_path
+) -> None:
     class StubRepository:
         def __init__(self) -> None:
             self.saved_questions = []

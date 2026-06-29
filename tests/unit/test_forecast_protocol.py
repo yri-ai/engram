@@ -71,7 +71,6 @@ def test_support_and_opposition_evidence_adjust_probabilities():
 
     run = DeterministicForecastProtocol().create_run(question, dossier, run_id="run-evidence")
 
-
     assert run.probabilities["yes"] > run.probabilities["no"]
     assert run.metadata["support_counts"] == {"yes": 1, "no": 0}
     assert run.metadata["opposition_counts"] == {"yes": 0, "no": 1}
@@ -136,7 +135,9 @@ def _question(branches: list[OutcomeBranch]) -> ForecastQuestion:
     return ForecastQuestion(
         id="q-protocol",
         title="Will the contract renew?",
-        question_type=ForecastQuestionType.BINARY if len(branches) == 2 else ForecastQuestionType.CLOSED_BRANCH,
+        question_type=ForecastQuestionType.BINARY
+        if len(branches) == 2
+        else ForecastQuestionType.CLOSED_BRANCH,
         forecast_as_of=NOW,
         horizon="30d",
         resolution_criteria=ResolutionCriteria(

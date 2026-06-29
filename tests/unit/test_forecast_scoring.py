@@ -166,11 +166,16 @@ def _question(
     question_id: str,
     branches: list[OutcomeBranch] | None = None,
 ) -> ForecastQuestion:
-    branches = branches or [OutcomeBranch(id="yes", label="Yes"), OutcomeBranch(id="no", label="No")]
+    branches = branches or [
+        OutcomeBranch(id="yes", label="Yes"),
+        OutcomeBranch(id="no", label="No"),
+    ]
     return ForecastQuestion(
         id=question_id,
         title="Will the event occur?",
-        question_type=ForecastQuestionType.BINARY if len(branches) == 2 else ForecastQuestionType.CLOSED_BRANCH,
+        question_type=ForecastQuestionType.BINARY
+        if len(branches) == 2
+        else ForecastQuestionType.CLOSED_BRANCH,
         forecast_as_of=NOW,
         horizon="30d",
         resolution_criteria=ResolutionCriteria(

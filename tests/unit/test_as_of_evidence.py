@@ -25,7 +25,9 @@ async def test_compiler_includes_direct_relationship_and_one_hop_facts_known_as_
     await store.upsert_entity(alice)
     await store.upsert_entity(acme)
     await store.save_fact(_fact("f-direct", alice.id, "Alice is evaluating renewal."))
-    await store.create_relationship(_relationship("r-msg", alice.id, acme.id, "Alice is linked to Acme."))
+    await store.create_relationship(
+        _relationship("r-msg", alice.id, acme.id, "Alice is linked to Acme.")
+    )
     await store.save_fact(_fact("f-hop", acme.id, "Acme offered Alice a discount."))
 
     dossier = await _compile(store, target_id=alice.id)
@@ -46,7 +48,9 @@ async def test_adapter_includes_inbound_relationships_and_related_source_facts()
     project = _entity("project", EntityType.TOPIC)
     await store.upsert_entity(alice)
     await store.upsert_entity(project)
-    await store.create_relationship(_relationship("r-in", project.id, alice.id, "Project depends on Alice."))
+    await store.create_relationship(
+        _relationship("r-in", project.id, alice.id, "Project depends on Alice.")
+    )
     await store.save_fact(_fact("f-source", project.id, "Project has a January deadline."))
 
     dossier = await _compile(store, target_id=alice.id)
@@ -104,10 +108,20 @@ async def test_resolution_evidence_markers_are_excluded():
     alice = _entity("alice", EntityType.PERSON)
     await store.upsert_entity(alice)
     await store.save_fact(
-        _fact("f-role", alice.id, "Resolution-only evidence.", metadata={"evidence_role": "resolution_evidence"})
+        _fact(
+            "f-role",
+            alice.id,
+            "Resolution-only evidence.",
+            metadata={"evidence_role": "resolution_evidence"},
+        )
     )
     await store.save_fact(
-        _fact("f-question", alice.id, "Question-specific resolution evidence.", metadata={"resolution_for_question_id": "q-1"})
+        _fact(
+            "f-question",
+            alice.id,
+            "Question-specific resolution evidence.",
+            metadata={"resolution_for_question_id": "q-1"},
+        )
     )
 
     dossier = await _compile(store, target_id=alice.id)

@@ -114,7 +114,9 @@ class DeterministicForecastProtocol:
             prior = 1.0 / len(question.branches)
             return {branch.id: prior for branch in question.branches}
 
-        priors = {branch.id: branch.prior for branch in question.branches if branch.prior is not None}
+        priors = {
+            branch.id: branch.prior for branch in question.branches if branch.prior is not None
+        }
         prior_sum = sum(priors.values())
         if prior_sum <= 0:
             raise ValueError("branch priors must sum to a positive value")
@@ -159,7 +161,9 @@ class DeterministicForecastProtocol:
         )[0]
 
     @staticmethod
-    def _validate_evidence_citations(cited_evidence_ids: list[str], dossier_evidence_ids: list[str]) -> None:
+    def _validate_evidence_citations(
+        cited_evidence_ids: list[str], dossier_evidence_ids: list[str]
+    ) -> None:
         unknown_ids = set(cited_evidence_ids) - set(dossier_evidence_ids)
         if unknown_ids:
             raise ValueError("cited evidence ids must exist in dossier evidence")

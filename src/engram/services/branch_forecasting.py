@@ -110,7 +110,10 @@ EVENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("offsetting_cost_actions", ("offsetting cost", "cost offset", "productivity offset")),
     ("offering_memorandum", ("offering memorandum", " om", "_om", " offering ")),
     ("rent_roll", ("rent roll", "rent-roll", "rr -", "_rr", "lease charges")),
-    ("operating_statement", ("t12", "trailing", "profit and loss", "operating statement", "financial workbook")),
+    (
+        "operating_statement",
+        ("t12", "trailing", "profit and loss", "operating statement", "financial workbook"),
+    ),
     ("underwriting_model", ("underwriting", "acq summary", "acquisition summary")),
     ("debt_pressure", ("debt matrix", "refinance", "loan", "interest rate")),
     ("tax_increase", ("trim notice", "tax increase", "reassessment")),
@@ -165,7 +168,11 @@ def evidence_from_records(records: Iterable[dict[str, object]]) -> list[Evidence
         salience_raw = record.get("salience", record.get("confidence", 1.0))
         salience = float(salience_raw) if isinstance(salience_raw, int | float) else 1.0
         tokens_raw = record.get("tokens")
-        tokens = int(tokens_raw) if isinstance(tokens_raw, int) and tokens_raw > 0 else _estimate_tokens(text)
+        tokens = (
+            int(tokens_raw)
+            if isinstance(tokens_raw, int) and tokens_raw > 0
+            else _estimate_tokens(text)
+        )
 
         items.append(
             EvidenceItem(
@@ -334,10 +341,14 @@ class ContextBudgetSelector:
         blockers = 0
         for branch in branches:
             matches += sum(
-                1 for event_type in branch.precursor_events if _event_match_score(evidence, event_type)
+                1
+                for event_type in branch.precursor_events
+                if _event_match_score(evidence, event_type)
             )
             blockers += sum(
-                1 for event_type in branch.blocked_by_events if _event_match_score(evidence, event_type)
+                1
+                for event_type in branch.blocked_by_events
+                if _event_match_score(evidence, event_type)
             )
 
         # Reward discriminative evidence that either supports or rules out a branch.

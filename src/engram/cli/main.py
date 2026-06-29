@@ -41,6 +41,7 @@ app = typer.Typer(name="engram", help="Temporal knowledge graph engine for AI me
 console = Console()
 settings = Settings()
 
+
 class CLIError(Exception):
     """Custom exception for CLI failures."""
 
@@ -221,7 +222,11 @@ class JsonEvidenceDossierCompiler:
 
     def compile(self, question: ForecastQuestion) -> EvidenceDossier:
         payload = json.loads(self.evidence_json.read_text(encoding="utf-8"))
-        raw_items = payload.get("evidence_items", payload.get("evidence", [])) if isinstance(payload, dict) else payload
+        raw_items = (
+            payload.get("evidence_items", payload.get("evidence", []))
+            if isinstance(payload, dict)
+            else payload
+        )
         if not isinstance(raw_items, list):
             raise CLIError("Evidence JSON must be a list or contain an evidence_items list")
 
@@ -455,9 +460,7 @@ def query(
 def forecast(
     file: str = typer.Argument(..., help="Path to forecast evidence JSON/NDJSON or directory"),
     objective: str = typer.Option(..., help="Decision objective to forecast against"),
-    structural_family: str = typer.Option(
-        "margin_analysis", help="Forecast structural family"
-    ),
+    structural_family: str = typer.Option("margin_analysis", help="Forecast structural family"),
     max_items: int = typer.Option(6, help="Maximum evidence items to use"),
     max_tokens: int = typer.Option(1200, help="Maximum approximate context tokens"),
     min_score: float = typer.Option(0.0, help="Minimum evidence salience to consider"),
@@ -513,7 +516,9 @@ def forecast_question_create(
     resolved_by: str | None = typer.Option(None, help="Optional resolution deadline timestamp"),
     tenant_id: str = typer.Option("default", help="Tenant ID"),
     target_id: str | None = typer.Option(None, help="Optional target entity ID"),
-    question_type: str | None = typer.Option(None, help="binary or closed_branch; inferred by default"),
+    question_type: str | None = typer.Option(
+        None, help="binary or closed_branch; inferred by default"
+    ),
     status: str = typer.Option("draft", help="Question status"),
 ) -> None:
     """Create a forecast question in the JSON forecast ledger."""
@@ -580,7 +585,9 @@ def forecast_run_create(
     try:
         repository = _build_forecast_repository(repo)
         question = repository.load_question(question_id)
-        evidence_dossier = EvidenceDossier.model_validate_json(Path(dossier).read_text(encoding="utf-8"))
+        evidence_dossier = EvidenceDossier.model_validate_json(
+            Path(dossier).read_text(encoding="utf-8")
+        )
         run = _build_forecast_protocol().create_run(question, evidence_dossier, run_id=run_id)
         repository.save_run(run)
         if output:
@@ -710,7 +717,9 @@ def _render_forecast(result: dict[str, Any]) -> None:
     console.print(table)
 
     if result["evidence_gaps"]:
-        console.print("[bold yellow]Evidence gaps:[/bold yellow] " + ", ".join(result["evidence_gaps"]))
+        console.print(
+            "[bold yellow]Evidence gaps:[/bold yellow] " + ", ".join(result["evidence_gaps"])
+        )
 
 
 def _resolve_entity(

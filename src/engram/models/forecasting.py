@@ -137,7 +137,9 @@ class ForecastRun(BaseModel):
             raise ValueError("probability keys must match branch ids")
         if any(not math.isfinite(probability) for probability in self.probabilities.values()):
             raise ValueError("probabilities must be finite")
-        if any(probability < 0.0 or probability > 1.0 for probability in self.probabilities.values()):
+        if any(
+            probability < 0.0 or probability > 1.0 for probability in self.probabilities.values()
+        ):
             raise ValueError("probabilities must be between 0 and 1")
         if abs(sum(self.probabilities.values()) - 1.0) > 1e-6:
             raise ValueError("probabilities must sum to 1.0")

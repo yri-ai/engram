@@ -104,7 +104,9 @@ def score_forecast_run(
         raise ValueError("run and resolution branch ids must match")
 
     probability_assigned = probability_assigned_to_resolved_branch(run, resolution.resolved_branch)
-    top_k_correct = top_k_accuracy(run, resolution.resolved_branch, top_k) if top_k is not None else None
+    top_k_correct = (
+        top_k_accuracy(run, resolution.resolved_branch, top_k) if top_k is not None else None
+    )
     return ForecastScore(
         id=f"score-{run.id}",
         run_id=run.id,
@@ -175,7 +177,9 @@ def build_calibration_report(
 
 
 def _ranked_branch_ids(run: ForecastRun) -> list[str]:
-    return sorted(run.probabilities, key=lambda branch_id: (-run.probabilities[branch_id], branch_id))
+    return sorted(
+        run.probabilities, key=lambda branch_id: (-run.probabilities[branch_id], branch_id)
+    )
 
 
 def _validate_probability(probability: float) -> None:
@@ -194,10 +198,14 @@ def _resolutions_by_question_id(
     return by_question
 
 
-def _build_buckets(scores: list[ForecastScore], bucket_count: int) -> list[dict[str, float | int | None]]:
+def _build_buckets(
+    scores: list[ForecastScore], bucket_count: int
+) -> list[dict[str, float | int | None]]:
     scores_by_bucket: dict[int, list[ForecastScore]] = defaultdict(list)
     for score in scores:
-        bucket_probability = score.metadata.get("top_branch_probability", score.probability_assigned)
+        bucket_probability = score.metadata.get(
+            "top_branch_probability", score.probability_assigned
+        )
         bucket = assign_calibration_bucket(float(bucket_probability), bucket_count)
         scores_by_bucket[bucket].append(score)
 
@@ -211,7 +219,12 @@ def _build_buckets(scores: list[ForecastScore], bucket_count: int) -> list[dict[
                 "upper_bound": (bucket + 1) / bucket_count,
                 "count": len(bucket_scores),
                 "mean_probability": _mean(
-                    [float(score.metadata.get("top_branch_probability", score.probability_assigned)) for score in bucket_scores]
+                    [
+                        float(
+                            score.metadata.get("top_branch_probability", score.probability_assigned)
+                        )
+                        for score in bucket_scores
+                    ]
                 ),
                 "observed_frequency": _mean(
                     [1.0 if score.top_1_correct else 0.0 for score in bucket_scores]
