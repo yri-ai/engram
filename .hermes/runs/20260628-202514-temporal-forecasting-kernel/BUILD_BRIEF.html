@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>BUILD_BRIEF — Temporal Forecasting Kernel</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.55; color: #172033; background: #f8fafc; }
+    main { max-width: 1080px; margin: auto; background: white; padding: 2rem; border-radius: 16px; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08); }
+    h1, h2, h3 { color: #0f172a; }
+    code, pre { background: #eef2ff; border-radius: 6px; padding: 0.15rem 0.35rem; }
+    pre { padding: 1rem; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #cbd5e1; padding: 0.6rem; vertical-align: top; }
+    th { background: #e2e8f0; text-align: left; }
+    .status { display: inline-block; padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; color: #14532d; background: #bbf7d0; }
+    .warn { color: #92400e; background: #fef3c7; padding: 0.8rem; border-radius: 10px; }
+    .decision { color: #1e3a8a; background: #dbeafe; padding: 0.8rem; border-radius: 10px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>BUILD_BRIEF — Temporal Forecasting Kernel</h1>
+  <p><span class="status">PASS</span></p>
+  <script type="application/json" id="report-metadata">
+  {
+    "phase": "build_brief",
+    "status": "PASS",
+    "runId": "20260628-202514-temporal-forecasting-kernel",
+    "repo": "/home/leo/dev/projects/engram",
+    "worktree": "/home/leo/dev/projects/engram/.worktree/temporal-forecasting-kernel",
+    "branch": "wf/temporal-forecasting-kernel-20260628",
+    "base": "origin/master@2b1f95b",
+    "generatedAt": "2026-06-28T20:25:14-04:00"
+  }
+  </script>
+
+  <h2>Goal</h2>
+  <p>Build Engram’s prediction component around a <strong>bitemporal probabilistic forecasting kernel</strong>, not a RAG-centered app.</p>
+  <p>The system must answer: <em>Given only what Engram knew at timestamp T, what probability should it assign to outcome Y by horizon H, and why?</em></p>
+
+  <h2>Input Request</h2>
+  <p>User requested: <code>Run the existing-app workflow on engram</code>.</p>
+  <p>Based on the immediately preceding research/design context, the target change is interpreted as:</p>
+  <blockquote>
+    Build the Temporal Forecasting Kernel around forecast contracts, as-of evidence state reconstruction, structured forecaster protocols, immutable forecast runs, resolution, proper scoring, and calibration reporting. Evidence lookup is plumbing; the product thesis is time-indexed belief formation and auditability.
+  </blockquote>
+
+  <h2>Repository / Worktree</h2>
+  <table>
+    <tr><th>Original repo</th><td><code>/home/leo/dev/projects/engram</code></td></tr>
+    <tr><th>Worktree</th><td><code>/home/leo/dev/projects/engram/.worktree/temporal-forecasting-kernel</code></td></tr>
+    <tr><th>Branch</th><td><code>wf/temporal-forecasting-kernel-20260628</code></td></tr>
+    <tr><th>Base branch</th><td><code>origin/master</code></td></tr>
+    <tr><th>Base commit</th><td><code>2b1f95b Make prediction work measurable before expanding extraction (#9)</code></td></tr>
+  </table>
+
+  <h2>Current App Context</h2>
+  <ul>
+    <li>Python 3.11, FastAPI, Pydantic v2, Neo4j, Redis, LiteLLM, Typer/Rich CLI, uv.</li>
+    <li>Existing graph models include entities, relationships, facts, commitments, runs, summaries, snapshots, temporal primitives.</li>
+    <li>Existing services include extraction, resolution, temporal reasoning, snapshots, branch forecasting, research/Track B modules, memory and Neo4j stores.</li>
+    <li>Existing CLI includes <code>serve</code>, <code>ingest</code>, <code>query</code>, <code>forecast</code>, <code>health</code>, <code>export</code>.</li>
+    <li>Full local test suite passed earlier with Neo4j/Redis healthy: <code>289 passed</code>.</li>
+    <li>Known current issues: <code>engram health</code> crashes; <code>ruff check .</code> has two fixable issues in scripts.</li>
+    <li>Open PR #10 (<code>feat/forecast-lifecycle-m1</code>) adds some forecast lifecycle work but needs review against the corrected kernel framing.</li>
+  </ul>
+
+  <h2>Acceptance Criteria</h2>
+  <table>
+    <tr><th>ID</th><th>Criterion</th></tr>
+    <tr><td>AC1</td><td>Forecast contracts exist for binary and closed branch questions with mandatory <code>forecast_as_of</code>, horizon, allowed outcomes, and resolution criteria.</td></tr>
+    <tr><td>AC2</td><td>Forecast runs are immutable. Reruns create new run IDs and preserve exact model/protocol/evidence references.</td></tr>
+    <tr><td>AC3</td><td>An <code>AsOfEvidenceCompiler</code> reconstructs evidence known at forecast time using record-time filters and preserves valid-time, supersession, contradiction, and provenance metadata.</td></tr>
+    <tr><td>AC4</td><td>Leakage tests prove future-recorded evidence, resolution evidence, and post-hoc derived facts are excluded from historical forecasts.</td></tr>
+    <tr><td>AC5</td><td>Structured forecaster protocol produces probability distributions over binary or closed branch outcomes; probabilities validate and sum to 1.</td></tr>
+    <tr><td>AC6</td><td>Forecast runs store evidence IDs and rationale; rationale text alone is not accepted as provenance.</td></tr>
+    <tr><td>AC7</td><td>Resolution and score reports support binary Brier, multiclass Brier, log score, top-k accuracy where applicable, and calibration buckets with low-sample warnings.</td></tr>
+    <tr><td>AC8</td><td>CLI/service surface allows creating questions, compiling as-of dossiers, running forecasts, resolving outcomes, and scoring stored runs.</td></tr>
+    <tr><td>AC9</td><td>Implementation remains deterministic for cutoff enforcement, snapshot reconstruction, validation, immutability, resolution storage, scoring, and calibration reporting.</td></tr>
+    <tr><td>AC10</td><td>Verification passes targeted unit tests, <code>uv run mypy src</code>, targeted <code>uv run ruff check</code>, and relevant smoke tests.</td></tr>
+  </table>
+
+  <h2>Non-Goals for This Workflow</h2>
+  <ul>
+    <li>No temporal graph neural network training.</li>
+    <li>No TGL-LLM graph tokenization/fine-tuning.</li>
+    <li>No claims of calibrated performance before enough resolved forecasts exist.</li>
+    <li>No generic public-event forecasting bot as the core product.</li>
+    <li>No vector-only or RAG-centered architecture.</li>
+    <li>No continuous numeric forecasting across arbitrary domains in the MVP.</li>
+    <li>No autonomous web-search forecaster as the core product.</li>
+  </ul>
+
+  <h2>Likely Files to Inspect / Change</h2>
+  <table>
+    <tr><th>Area</th><th>Likely paths</th></tr>
+    <tr><td>Models</td><td><code>src/engram/models/forecasting.py</code>, <code>src/engram/models/__init__.py</code>, possibly <code>src/engram/models/fact.py</code></td></tr>
+    <tr><td>Services</td><td><code>src/engram/services/as_of_evidence.py</code>, <code>src/engram/services/forecast_repository.py</code>, <code>src/engram/services/forecast_scoring.py</code>, <code>src/engram/services/forecast_protocol.py</code></td></tr>
+    <tr><td>Storage</td><td><code>src/engram/storage/base.py</code>, <code>src/engram/storage/memory.py</code>, <code>src/engram/storage/neo4j.py</code> if graph-backed persistence is included in MVP slice</td></tr>
+    <tr><td>CLI</td><td><code>src/engram/cli/main.py</code></td></tr>
+    <tr><td>Tests</td><td><code>tests/unit/test_forecasting_models.py</code>, <code>tests/unit/test_as_of_evidence.py</code>, <code>tests/unit/test_forecast_repository.py</code>, <code>tests/unit/test_forecast_scoring.py</code>, <code>tests/unit/test_cli.py</code></td></tr>
+    <tr><td>Docs</td><td><code>docs/plans/2026-06-28-temporal-forecasting-kernel.md</code>, README forecast section if warranted</td></tr>
+  </table>
+
+  <h2>Initial Verification Commands</h2>
+  <pre><code>uv run pytest tests/unit -q
+uv run mypy src
+uv run ruff check src tests
+uv run engram --help</code></pre>
+
+  <h2>Open Questions</h2>
+  <p class="decision">No blocking questions for design. Assumption: implement the smallest useful kernel slice around binary and closed-branch forecasts, with in-memory/JSON persistence acceptable before full Neo4j forecast-run persistence. If the user wants a narrower or different first vertical, that can be decided during design review.</p>
+
+  <h2>Next Phase</h2>
+  <p>Proceed to <code>DESIGN.html</code>: specify the Temporal Forecasting Kernel architecture, data model, deterministic vs LLM-driven boundaries, storage strategy, CLI/API surface, test strategy, and acceptance-criteria mapping.</p>
+</main>
+</body>
+</html>

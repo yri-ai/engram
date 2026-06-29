@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>CODING_LOG — Temporal Forecasting Kernel</title><style>body{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#f8fafc;color:#172033;line-height:1.55}main{max-width:1080px;margin:auto;background:white;padding:2rem;border-radius:16px}.status{display:inline-block;padding:.35rem .7rem;border-radius:999px;font-weight:700;color:#14532d;background:#bbf7d0}code,pre{background:#eef2ff;border-radius:6px;padding:.15rem .35rem}pre{padding:1rem;overflow:auto}table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border:1px solid #cbd5e1;padding:.6rem;vertical-align:top}th{background:#e2e8f0;text-align:left}</style></head><body><main>
+<h1>CODING_LOG — Temporal Forecasting Kernel</h1><p><span class="status">IN_PROGRESS</span></p>
+<script type="application/json" id="report-metadata">{"phase":"coding","status":"IN_PROGRESS","runId":"20260628-202514-temporal-forecasting-kernel","worktree":"/home/leo/dev/projects/engram/.worktree/temporal-forecasting-kernel","generatedAt":"2026-06-28T20:25:14-04:00"}</script>
+<h2>Task 1 — Forecast model contracts</h2><p><strong>Status:</strong> PASS</p>
+<h3>Changed files</h3><ul><li><code>src/engram/models/forecasting.py</code></li><li><code>tests/unit/test_forecasting_models.py</code></li><li><code>src/engram/models/__init__.py</code></li></ul>
+<h3>Implemented</h3><ul><li>Forecast question, branch, resolution criteria, evidence item/dossier, run, resolution, score, and calibration summary contracts.</li><li>Mandatory <code>forecast_as_of</code> and <code>horizon</code> on forecast questions.</li><li>Optional branch priors.</li><li>Evidence packet temporal, provenance, support/opposition, supersession, and contradiction fields.</li><li>Forecast run probability validation: exact branch key match, sum-to-one tolerance, top branch max-probability check, frozen/immutable model.</li></ul>
+<h3>Verification</h3><pre><code>uv run pytest tests/unit/test_forecasting_models.py -q
+# 11 passed in 0.11s
+
+uv run ruff check src/engram/models/forecasting.py tests/unit/test_forecasting_models.py
+# All checks passed!
+
+uv run mypy src/engram/models/forecasting.py
+# Success: no issues found in 1 source file</code></pre>
+<h3>Notes</h3><p>OpenCode initially omitted a few protocol-critical details; Hermes patched Task 1 before accepting it: branch support/opposition are lists, question horizon is required, dossiers track exclusions/missing evidence, and <code>top_branch</code> must be the max-probability branch.</p>
+<h2>Task 2 — As-of evidence compiler and data-source adapter</h2><p><strong>Status:</strong> PASS</p>
+<h3>Changed files</h3><ul><li><code>src/engram/services/as_of_evidence.py</code></li><li><code>tests/unit/test_as_of_evidence.py</code></li></ul>
+<h3>Implemented</h3><ul><li><code>GraphEvidenceAdapter</code> protocol.</li><li><code>MemoryGraphEvidenceAdapter</code> with direct target facts, outbound and inbound relationships, and one-hop related facts.</li><li><code>AsOfEvidenceCompiler</code> producing <code>EvidenceDossier</code> objects.</li><li>Leakage exclusions for future record time, late source ingestion, resolution evidence markers, and post-hoc derived facts.</li><li>Supersession algorithm that scans replacement facts by <code>supersedes_fact_id</code> without requiring store-level <code>recorded_to</code> mutation.</li></ul>
+<h3>Verification</h3><pre><code>uv run pytest tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py -q
+# 18 passed in 0.20s
+
+uv run ruff check src/engram/models/forecasting.py src/engram/services/as_of_evidence.py tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py
+# All checks passed!
+
+uv run mypy src/engram/models/forecasting.py src/engram/services/as_of_evidence.py
+# Success: no issues found in 2 source files</code></pre>
+<h2>Task 3 — Immutable forecast repository</h2><p><strong>Status:</strong> PASS</p>
+<h3>Changed files</h3><ul><li><code>src/engram/services/forecast_repository.py</code></li><li><code>tests/unit/test_forecast_repository.py</code></li></ul>
+<h3>Implemented</h3><ul><li><code>JsonForecastRepository</code> with JSON storage under <code>questions/</code>, <code>runs/</code>, <code>resolutions/</code>, and <code>scores/</code>.</li><li>Append-only forecast run semantics with duplicate run ID refusal.</li><li>Draft-only question update rule; active question changes require new IDs/versions.</li><li>Resolution validation against saved question branch IDs.</li><li>Score persistence and atomic-ish temp-file rename writes.</li></ul>
+<h3>Verification</h3><pre><code>uv run pytest tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py -q
+# 23 passed in 0.20s
+
+uv run ruff check src/engram/models/forecasting.py src/engram/services/as_of_evidence.py src/engram/services/forecast_repository.py tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py
+# All checks passed!
+
+uv run mypy src/engram/models/forecasting.py src/engram/services/as_of_evidence.py src/engram/services/forecast_repository.py
+# Success: no issues found in 3 source files</code></pre>
+<h2>Task 4 — Deterministic forecast protocol</h2><p><strong>Status:</strong> PASS</p>
+<h3>Changed files</h3><ul><li><code>src/engram/services/forecast_protocol.py</code></li><li><code>tests/unit/test_forecast_protocol.py</code></li></ul>
+<h3>Implemented</h3><ul><li><code>DeterministicForecastProtocol</code> and config defaults.</li><li>Uniform priors and explicit branch priors.</li><li>Evidence support/opposition weighting.</li><li>Missing-evidence penalty in raw scores.</li><li>Stable softmax and probability sum validation.</li><li>Lexicographic tie-break for equal probabilities.</li><li>Evidence citation validation against dossier IDs.</li></ul>
+<h3>Verification</h3><pre><code>uv run pytest tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py -q
+# 30 passed in 0.18s
+
+uv run ruff check src/engram/models/forecasting.py src/engram/services/as_of_evidence.py src/engram/services/forecast_repository.py src/engram/services/forecast_protocol.py tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py
+# All checks passed!
+
+uv run mypy src/engram/models/forecasting.py src/engram/services/as_of_evidence.py src/engram/services/forecast_repository.py src/engram/services/forecast_protocol.py
+# Success: no issues found in 4 source files</code></pre>
+<h2>Task 5 — Scoring and calibration reports</h2><p><strong>Status:</strong> PASS</p>
+<h3>Changed files</h3><ul><li><code>src/engram/services/forecast_scoring.py</code></li><li><code>tests/unit/test_forecast_scoring.py</code></li></ul>
+<h3>Implemented</h3><ul><li>Binary and multiclass Brier score helpers.</li><li>Clipped log score.</li><li>Top-1 and top-k accuracy helpers.</li><li>Resolved-branch probability lookup.</li><li>Calibration bucket assignment.</li><li>Repository report builder over stored runs/resolutions with missing-resolution skip/error behavior.</li><li>Low-sample warning in calibration summaries.</li></ul>
+<h3>Verification</h3><pre><code>uv run pytest tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py tests/unit/test_forecast_scoring.py -q
+# 40 passed in 0.28s
+
+uv run ruff check src/engram/models/forecasting.py src/engram/services/as_of_evidence.py src/engram/services/forecast_repository.py src/engram/services/forecast_protocol.py src/engram/services/forecast_scoring.py tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py tests/unit/test_forecast_scoring.py
+# All checks passed!
+
+uv run mypy src/engram/models/forecasting.py src/engram/services/as_of_evidence.py src/engram/services/forecast_repository.py src/engram/services/forecast_protocol.py src/engram/services/forecast_scoring.py
+# Success: no issues found in 5 source files</code></pre>
+<h2>Task 6 — CLI wiring</h2><p><strong>Status:</strong> PASS</p>
+<h3>Changed files</h3><ul><li><code>src/engram/cli/main.py</code></li><li><code>tests/unit/test_cli.py</code></li></ul>
+<h3>Implemented</h3><ul><li>Flat Typer commands: <code>forecast-question-create</code>, <code>forecast-dossier-compile</code>, <code>forecast-run-create</code>, <code>forecast-resolve-create</code>, <code>forecast-score-report</code>.</li><li>Factory seams for repository, protocol, and MVP JSON evidence compiler.</li><li>MVP dossier compile path from JSON evidence only; no Neo4j dependency.</li><li>Existing <code>engram forecast</code> smoke behavior kept intact.</li><li>Removed broken <code>Console.print(..., file=sys.stderr)</code> usage while touching CLI error paths.</li></ul>
+<h3>Verification</h3><pre><code>uv run pytest tests/unit/test_cli.py tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py tests/unit/test_forecast_scoring.py -q
+# 47 passed in 0.66s
+
+uv run ruff check src tests/unit/test_cli.py tests/unit/test_forecasting_models.py tests/unit/test_as_of_evidence.py tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py tests/unit/test_forecast_scoring.py
+# All checks passed!
+
+uv run mypy src
+# Success: no issues found in 61 source files
+
+uv run engram --help
+# Passed; listed new forecast-kernel commands</code></pre>
+<h2>Task 7 — Documentation</h2><p><strong>Status:</strong> PASS</p>
+<h3>Changed files</h3><ul><li><code>docs/plans/2026-06-28-temporal-forecasting-kernel.md</code></li><li><code>README.md</code></li></ul>
+<h3>Implemented</h3><ul><li>Architecture doc for the bitemporal probabilistic forecasting kernel.</li><li>README section that positions the feature away from RAG and toward forecast-time epistemology.</li><li>CLI lifecycle example from question creation through scoring report.</li><li>Explicit “not solved yet” section to avoid overclaiming calibration or LLM forecasting quality.</li></ul>
+</main></body></html>

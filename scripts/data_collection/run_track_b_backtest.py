@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from engram.services.track_b_forecasting import BaselineForecaster
@@ -59,7 +59,7 @@ def main() -> None:
         })
 
     artifact = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "window": {
             "train_count": len(train),
             "eval_count": len(eval_rows),
