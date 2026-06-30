@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from engram.models.branch_forecasting import (
@@ -282,6 +283,27 @@ def _estimate_tokens(text: str) -> int:
     return max(1, math.ceil(len(text.split()) * 1.3))
 
 
+def _filter_evidence_as_of(
+    evidence: Iterable[EvidenceItem], forecast_as_of: datetime | None
+) -> list[EvidenceItem]:
+    if forecast_as_of is None:
+        return list(evidence)
+
+    filtered: list[EvidenceItem] = []
+    for item in evidence:
+        if item.timestamp is None:
+            filtered.append(item)
+            continue
+        try:
+            item_time = datetime.fromisoformat(item.timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            filtered.append(item)
+            continue
+        if item_time <= forecast_as_of:
+            filtered.append(item)
+    return filtered
+
+
 def _safe_evidence_id(path: Path) -> str:
     stem = str(path.with_suffix(""))
     safe = "".join(char.casefold() if char.isalnum() else "-" for char in stem)
@@ -483,13 +505,15 @@ class BranchForecaster:
         structural_family: str,
         evidence: Iterable[EvidenceItem],
         budget: ContextBudget | None = None,
+        forecast_as_of: datetime | None = None,
     ) -> BranchForecast:
         branches = self._branch_families.get(structural_family)
         if not branches:
             raise ValueError(f"unknown structural family: {structural_family}")
 
         context_budget = budget or ContextBudget()
-        selected = self._selector.select(evidence, branches, context_budget)
+        filtered_evidence = _filter_evidence_as_of(evidence, forecast_as_of)
+        selected = self._selector.select(filtered_evidence, branches, context_budget)
         scores = self._ranker.rank(objective, branches, selected)
         top_branch = scores[0].branch if scores else ""
         evidence_gaps = sorted({gap for score in scores[:2] for gap in score.missing_precursors})

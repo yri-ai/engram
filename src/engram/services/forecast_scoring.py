@@ -1,11 +1,11 @@
-"""Scoring and provisional calibration reports for resolved forecasts."""
+"""Scoring utilities for resolved forecast runs."""
 
 from __future__ import annotations
 
 import math
 from collections import defaultdict
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, TypedDict
 
 from engram.models.forecasting import (
     CalibrationSummary,
@@ -13,6 +13,23 @@ from engram.models.forecasting import (
     ForecastRun,
     ForecastScore,
 )
+
+
+class ScoredQuestionRow(TypedDict):
+    question_id: str
+    run_id: str
+    target_entity_id: str | None
+    forecast_as_of: str
+    top_branch: str
+    outcome_branch: str
+    resolution_source: str
+    selected_evidence_ids: list[str]
+    extraction_variant: str
+    brier_score: float
+    top_1_correct: bool
+    calibration_bucket: str
+    expected_calibration_error: float
+    sample_count: int
 
 
 class ForecastScoringRepository(Protocol):
@@ -23,6 +40,144 @@ class ForecastScoringRepository(Protocol):
     def list_resolutions(self) -> list[ForecastResolution]: ...
 
     def save_score(self, score: ForecastScore) -> None: ...
+
+
+class ForecastScorer:
+    """Compute per-question and aggregate forecast metrics."""
+
+    def score_runs(
+        self,
+        runs: list[ForecastRun],
+        resolutions: list[ForecastResolution],
+        *,
+        bins: int = 10,
+    ) -> dict[str, object]:
+        resolution_by_run_id = {
+            resolution.run_id: resolution
+            for resolution in resolutions
+            if resolution.run_id is not None
+        }
+        scores: list[ForecastScore] = []
+        per_question: list[ScoredQuestionRow] = []
+
+        for run in runs:
+            resolution = resolution_by_run_id.get(run.id)
+            if resolution is None:
+                continue
+
+            brier_score = self._multiclass_brier(run, resolution)
+            probabilities = _run_probabilities(run)
+            top_confidence = probabilities.get(run.top_branch, 0.0)
+            outcome_branch = _resolution_branch(resolution)
+            top_1_correct = run.top_branch == outcome_branch
+            scores.append(
+                ForecastScore(
+                    question_id=run.question_id,
+                    run_id=run.id,
+                    brier_score=brier_score,
+                    top_1_correct=top_1_correct,
+                    calibration_bucket=self._bucket_label(top_confidence, bins),
+                    expected_calibration_error=abs(top_confidence - float(top_1_correct)),
+                    sample_count=1,
+                )
+            )
+            per_question.append(
+                ScoredQuestionRow(
+                    question_id=run.question_id,
+                    run_id=run.id,
+                    target_entity_id=run.metadata.get("target_entity_id"),
+                    forecast_as_of=run.forecast_as_of.isoformat().replace("+00:00", "Z"),
+                    top_branch=run.top_branch,
+                    outcome_branch=outcome_branch,
+                    resolution_source=resolution.source or "",
+                    selected_evidence_ids=run.selected_evidence_ids,
+                    extraction_variant=run.metadata.get("extraction_variant", "default"),
+                    brier_score=brier_score,
+                    top_1_correct=top_1_correct,
+                    calibration_bucket=self._bucket_label(top_confidence, bins),
+                    expected_calibration_error=abs(top_confidence - float(top_1_correct)),
+                    sample_count=1,
+                )
+            )
+
+        aggregate = self._aggregate(scores, bins)
+        by_extraction_variant = self._aggregate_by_variant(per_question)
+        return {
+            "aggregate": aggregate,
+            "per_question": per_question,
+            "by_extraction_variant": by_extraction_variant,
+        }
+
+    @staticmethod
+    def _multiclass_brier(run: ForecastRun, resolution: ForecastResolution) -> float:
+        probabilities = _run_probabilities(run)
+        outcome_branch = _resolution_branch(resolution)
+        total = 0.0
+        for branch, probability in probabilities.items():
+            outcome = 1.0 if branch == outcome_branch else 0.0
+            total += (probability - outcome) ** 2
+        return total
+
+    def _aggregate(self, scores: list[ForecastScore], bins: int) -> dict[str, float | int]:
+        sample_count = len(scores)
+        if sample_count == 0:
+            return {
+                "sample_count": 0,
+                "top_1_accuracy": 0.0,
+                "brier_score": 0.0,
+                "expected_calibration_error": 0.0,
+            }
+
+        top_1_accuracy = sum(score.top_1_correct for score in scores) / sample_count
+        brier_score = sum(score.brier_score for score in scores) / sample_count
+
+        buckets: dict[str, list[ForecastScore]] = defaultdict(list)
+        for score in scores:
+            buckets[score.calibration_bucket or self._bucket_label(0.0, bins)].append(score)
+
+        ece = 0.0
+        for bucket_scores in buckets.values():
+            avg_error = sum(
+                score.expected_calibration_error or 0.0 for score in bucket_scores
+            ) / len(bucket_scores)
+            ece += (len(bucket_scores) / sample_count) * avg_error
+
+        return {
+            "sample_count": sample_count,
+            "top_1_accuracy": top_1_accuracy,
+            "brier_score": brier_score,
+            "expected_calibration_error": ece,
+        }
+
+    @staticmethod
+    def _bucket_label(confidence: float, bins: int) -> str:
+        index = min(int(confidence * bins), bins - 1)
+        start = index / bins
+        end = (index + 1) / bins
+        return f"{start:.1f}-{end:.1f}"
+
+    @staticmethod
+    def _aggregate_by_variant(
+        per_question: list[ScoredQuestionRow],
+    ) -> dict[str, dict[str, float | int]]:
+        grouped: dict[str, list[ScoredQuestionRow]] = defaultdict(list)
+        for item in per_question:
+            variant = item.get("extraction_variant", "default")
+            grouped[str(variant)].append(item)
+
+        summary: dict[str, dict[str, float | int]] = {}
+        for variant, rows in grouped.items():
+            sample_count = len(rows)
+            summary[variant] = {
+                "sample_count": sample_count,
+                "top_1_accuracy": sum(1 for row in rows if row["top_1_correct"]) / sample_count,
+                "brier_score": sum(float(row["brier_score"]) for row in rows) / sample_count,
+                "expected_calibration_error": sum(
+                    float(row["expected_calibration_error"]) for row in rows
+                )
+                / sample_count,
+            }
+        return summary
 
 
 def binary_brier_score(probability: float, resolved: bool) -> float:
@@ -71,8 +226,9 @@ def top_k_accuracy(run: ForecastRun, resolved_branch: str, k: int) -> bool:
 def probability_assigned_to_resolved_branch(run: ForecastRun, resolved_branch: str) -> float:
     """Return the run probability assigned to the ultimately resolved branch."""
 
+    probabilities = _run_probabilities(run)
     try:
-        return run.probabilities[resolved_branch]
+        return probabilities[resolved_branch]
     except KeyError as exc:
         raise ValueError("resolved branch is not present in run probabilities") from exc
 
@@ -100,27 +256,31 @@ def score_forecast_run(
 
     if run.question_id != resolution.question_id:
         raise ValueError("run and resolution question_id must match")
-    if set(run.branch_ids) != set(resolution.branch_ids):
+    probabilities = _run_probabilities(run)
+    resolved_branch = _resolution_branch(resolution)
+    if (
+        run.branch_ids
+        and resolution.branch_ids
+        and set(run.branch_ids) != set(resolution.branch_ids)
+    ):
         raise ValueError("run and resolution branch ids must match")
 
-    probability_assigned = probability_assigned_to_resolved_branch(run, resolution.resolved_branch)
-    top_k_correct = (
-        top_k_accuracy(run, resolution.resolved_branch, top_k) if top_k is not None else None
-    )
+    probability_assigned = probability_assigned_to_resolved_branch(run, resolved_branch)
+    top_k_correct = top_k_accuracy(run, resolved_branch, top_k) if top_k is not None else None
     return ForecastScore(
         id=f"score-{run.id}",
         run_id=run.id,
         question_id=run.question_id,
-        resolved_branch=resolution.resolved_branch,
+        resolved_branch=resolved_branch,
         probability_assigned=probability_assigned,
-        brier_score=multiclass_brier_score(run.probabilities, resolution.resolved_branch),
+        brier_score=multiclass_brier_score(probabilities, resolved_branch),
         log_score=log_score(probability_assigned, epsilon=epsilon),
-        top_1_correct=top_1_accuracy(run, resolution.resolved_branch),
+        top_1_correct=top_1_accuracy(run, resolved_branch),
         top_k_correct=top_k_correct,
         metadata={
             "resolution_id": resolution.id,
             "calibration_bucket": assign_calibration_bucket(probability_assigned, bucket_count),
-            "top_branch_probability": run.probabilities[run.top_branch],
+            "top_branch_probability": probabilities[run.top_branch],
         },
     )
 
@@ -164,7 +324,7 @@ def build_calibration_report(
         id=f"calibration-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
         run_count=run_count,
         mean_brier_score=_mean([score.brier_score for score in scores]),
-        mean_log_score=_mean([score.log_score for score in scores]),
+        mean_log_score=_mean([score.log_score or 0.0 for score in scores]),
         bucket_count=bucket_count,
         buckets=buckets,
         low_sample_warning=run_count < low_sample_threshold,
@@ -176,10 +336,20 @@ def build_calibration_report(
     )
 
 
+def _run_probabilities(run: ForecastRun) -> dict[str, float]:
+    return run.probabilities or run.branch_probabilities
+
+
+def _resolution_branch(resolution: ForecastResolution) -> str:
+    branch = resolution.resolved_branch or resolution.outcome_branch
+    if branch is None:
+        raise ValueError("resolution branch is required")
+    return branch
+
+
 def _ranked_branch_ids(run: ForecastRun) -> list[str]:
-    return sorted(
-        run.probabilities, key=lambda branch_id: (-run.probabilities[branch_id], branch_id)
-    )
+    probabilities = _run_probabilities(run)
+    return sorted(probabilities, key=lambda branch_id: (-probabilities[branch_id], branch_id))
 
 
 def _validate_probability(probability: float) -> None:
@@ -203,10 +373,8 @@ def _build_buckets(
 ) -> list[dict[str, float | int | None]]:
     scores_by_bucket: dict[int, list[ForecastScore]] = defaultdict(list)
     for score in scores:
-        bucket_probability = score.metadata.get(
-            "top_branch_probability", score.probability_assigned
-        )
-        bucket = assign_calibration_bucket(float(bucket_probability), bucket_count)
+        bucket_probability = _score_bucket_probability(score)
+        bucket = assign_calibration_bucket(bucket_probability, bucket_count)
         scores_by_bucket[bucket].append(score)
 
     buckets: list[dict[str, float | int | None]] = []
@@ -219,12 +387,7 @@ def _build_buckets(
                 "upper_bound": (bucket + 1) / bucket_count,
                 "count": len(bucket_scores),
                 "mean_probability": _mean(
-                    [
-                        float(
-                            score.metadata.get("top_branch_probability", score.probability_assigned)
-                        )
-                        for score in bucket_scores
-                    ]
+                    [_score_bucket_probability(score) for score in bucket_scores]
                 ),
                 "observed_frequency": _mean(
                     [1.0 if score.top_1_correct else 0.0 for score in bucket_scores]
@@ -232,6 +395,11 @@ def _build_buckets(
             }
         )
     return buckets
+
+
+def _score_bucket_probability(score: ForecastScore) -> float:
+    raw = score.metadata.get("top_branch_probability", score.probability_assigned)
+    return float(raw if raw is not None else 0.0)
 
 
 def _mean(values: list[float]) -> float | None:

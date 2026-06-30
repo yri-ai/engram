@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,19 +28,21 @@ from engram.models.forecasting import (
     ForecastQuestion,
     ForecastQuestionType,
     ForecastResolution,
+    ForecastRun,
     OutcomeBranch,
     QuestionStatus,
     ResolutionCriteria,
 )
 from engram.services.branch_forecasting import BranchForecaster, evidence_from_path
 from engram.services.forecast_protocol import DeterministicForecastProtocol
-from engram.services.forecast_repository import JsonForecastRepository
-from engram.services.forecast_scoring import build_calibration_report
+from engram.services.forecast_repository import ForecastRepository, JsonForecastRepository
+from engram.services.forecast_scoring import ForecastScorer, build_calibration_report
 from engram.storage.neo4j import Neo4jStore
 
 app = typer.Typer(name="engram", help="Temporal knowledge graph engine for AI memory")
 console = Console()
 settings = Settings()
+ALLOWED_BRANCH_OPTION = typer.Option(..., help="Allowed branch name; repeat for each branch")
 
 
 class CLIError(Exception):
@@ -56,6 +59,17 @@ class RelationshipRow:
     valid_from: str
     valid_to: str | None
     evidence: str
+
+
+class ForecastContext:
+    """Loaded storage and repository dependencies for forecast lifecycle commands."""
+
+    store: Neo4jStore
+    repository: ForecastRepository
+    scorer: ForecastScorer
+
+    async def close(self) -> None:
+        await self.store.close()
 
 
 class EngramHTTPClient:
@@ -194,6 +208,37 @@ def _build_client(api_url: str, timeout: float = 30.0) -> EngramHTTPClient:
     """Factory for EngramHTTPClient. Separated for easier testing."""
 
     return EngramHTTPClient(api_url=api_url, timeout=timeout)
+
+
+async def _open_forecast_context(
+    *, tenant_id: str, conversation_id: str, message_id: str
+) -> ForecastContext:
+    settings = Settings(_env_file=".env")
+    store = Neo4jStore(settings)
+    await store.initialize()
+    repository = ForecastRepository(
+        store,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    return ForecastContext(store=store, repository=repository, scorer=ForecastScorer())
+
+
+def _parse_iso8601(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise CLIError(f"Invalid datetime format: {value}") from exc
+
+
+def _branch_probabilities_from_scores(result: dict[str, Any]) -> dict[str, float]:
+    raw_scores = {item["branch"]: max(float(item["score"]), 0.0) for item in result["scores"]}
+    total = sum(raw_scores.values())
+    if total <= 0.0:
+        count = len(raw_scores)
+        return {branch: 1.0 / count for branch in raw_scores} if count else {}
+    return {branch: score / total for branch, score in raw_scores.items()}
 
 
 def _build_forecast_repository(path: str | Path) -> JsonForecastRepository:
@@ -662,6 +707,324 @@ def forecast_score_report(
     console.print(f"[bold blue]Scored runs: {report.run_count}[/bold blue]")
     if report.low_sample_warning:
         console.print("[yellow]Low sample warning: calibration report is provisional.[/yellow]")
+
+
+@app.command()
+def create_forecast_question(
+    target_entity_id: str = typer.Option(..., help="Target entity to forecast"),
+    objective: str = typer.Option(..., help="Decision objective to forecast against"),
+    structural_family: str = typer.Option(..., help="Forecast structural family"),
+    forecast_as_of: str = typer.Option(..., help="Evidence cutoff timestamp"),
+    horizon: str = typer.Option(..., help="Forecast horizon label"),
+    resolution_due_at: str = typer.Option(..., help="Expected resolution deadline"),
+    resolution_criteria: str = typer.Option(..., help="Objective resolution criteria"),
+    allowed_branch: list[str] = ALLOWED_BRANCH_OPTION,
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Persist a canonical forecast question."""
+    asyncio.run(
+        _create_forecast_question_impl(
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=forecast_as_of,
+            horizon=horizon,
+            resolution_due_at=resolution_due_at,
+            resolution_criteria=resolution_criteria,
+            allowed_branch=allowed_branch,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _create_forecast_question_impl(
+    *,
+    target_entity_id: str,
+    objective: str,
+    structural_family: str,
+    forecast_as_of: str,
+    horizon: str,
+    resolution_due_at: str,
+    resolution_criteria: str,
+    allowed_branch: list[str],
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    message_id = f"forecast-question-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        parsed_forecast_as_of = _parse_iso8601(forecast_as_of)
+        question = ForecastQuestion(
+            id=ForecastQuestion.build_id(
+                tenant_id=tenant_id,
+                target_entity_id=target_entity_id,
+                objective=objective,
+                forecast_as_of=parsed_forecast_as_of,
+            ),
+            tenant_id=tenant_id,
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=parsed_forecast_as_of,
+            horizon=horizon,
+            resolution_due_at=_parse_iso8601(resolution_due_at),
+            resolution_criteria=resolution_criteria,
+            allowed_branch_names=allowed_branch,
+        )
+        saved = await context.repository.save_question(question)
+        console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
+
+
+@app.command()
+def run_forecast(
+    file: str = typer.Argument(..., help="Path to forecast evidence JSON/NDJSON or directory"),
+    question_id: str = typer.Option(..., help="Forecast question identifier"),
+    target_entity_id: str = typer.Option(..., help="Target entity identifier"),
+    objective: str = typer.Option(..., help="Decision objective to forecast against"),
+    structural_family: str = typer.Option(..., help="Forecast structural family"),
+    forecast_as_of: str = typer.Option(..., help="Evidence cutoff timestamp"),
+    max_items: int = typer.Option(6, help="Maximum evidence items to use"),
+    max_tokens: int = typer.Option(1200, help="Maximum approximate context tokens"),
+    min_score: float = typer.Option(0.0, help="Minimum evidence salience to consider"),
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Run a forecast and persist the immutable run artifact."""
+    asyncio.run(
+        _run_forecast_impl(
+            file=file,
+            question_id=question_id,
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=forecast_as_of,
+            max_items=max_items,
+            max_tokens=max_tokens,
+            min_score=min_score,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _run_forecast_impl(
+    *,
+    file: str,
+    question_id: str,
+    target_entity_id: str,
+    objective: str,
+    structural_family: str,
+    forecast_as_of: str,
+    max_items: int,
+    max_tokens: int,
+    min_score: float,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    file_path = Path(file)
+    if not file_path.exists():
+        console.print(f"[bold red]✗ File not found: {file}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1)
+
+    message_id = f"forecast-run-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        parsed_forecast_as_of = _parse_iso8601(forecast_as_of)
+        evidence = evidence_from_path(file_path)
+        if not evidence:
+            raise CLIError("No forecast evidence found")
+        result = BranchForecaster().forecast(
+            objective=objective,
+            structural_family=structural_family,
+            evidence=evidence,
+            budget=ContextBudget(max_items=max_items, max_tokens=max_tokens, min_score=min_score),
+            forecast_as_of=parsed_forecast_as_of,
+        )
+        payload = result.model_dump(mode="json")
+        config = {"max_items": max_items, "max_tokens": max_tokens, "min_score": min_score}
+        run = ForecastRun(
+            id=ForecastRun.build_id(
+                question_id=question_id,
+                model_or_engine="branch_forecaster",
+                forecast_as_of=parsed_forecast_as_of,
+                config=config,
+            ),
+            question_id=question_id,
+            model_or_engine="branch_forecaster",
+            forecast_as_of=parsed_forecast_as_of,
+            branch_probabilities=_branch_probabilities_from_scores(payload),
+            top_branch=result.top_branch,
+            selected_evidence_ids=[item["id"] for item in payload["selected_context"]],
+            evidence_gaps=result.evidence_gaps,
+            rationale="; ".join(
+                f"{score.branch}: {score.rationale}" for score in result.scores[:2]
+            ),
+            config=config,
+            metadata={
+                "branch_forecast": payload,
+                "target_entity_id": target_entity_id,
+                "extraction_variant": "default",
+            },
+        )
+        saved = await context.repository.save_run(target_entity_id=target_entity_id, run=run)
+        console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
+
+
+@app.command()
+def resolve_forecast(
+    question_id: str = typer.Option(..., help="Forecast question identifier"),
+    run_id: str = typer.Option(..., help="Forecast run identifier"),
+    target_entity_id: str = typer.Option(..., help="Target entity identifier"),
+    outcome_branch: str = typer.Option(..., help="Observed outcome branch"),
+    resolved_at: str = typer.Option(..., help="Observed resolution timestamp"),
+    resolved_by: str = typer.Option(..., help="Analyst or system resolving the outcome"),
+    source: str = typer.Option(..., help="Resolution evidence source"),
+    resolution_notes: str | None = typer.Option(None, help="Optional resolution notes"),
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Persist an observed resolution for a forecast question."""
+    asyncio.run(
+        _resolve_forecast_impl(
+            question_id=question_id,
+            run_id=run_id,
+            target_entity_id=target_entity_id,
+            outcome_branch=outcome_branch,
+            resolved_at=resolved_at,
+            resolved_by=resolved_by,
+            source=source,
+            resolution_notes=resolution_notes,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _resolve_forecast_impl(
+    *,
+    question_id: str,
+    run_id: str,
+    target_entity_id: str,
+    outcome_branch: str,
+    resolved_at: str,
+    resolved_by: str,
+    source: str,
+    resolution_notes: str | None,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    message_id = f"forecast-resolution-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        resolution = ForecastResolution(
+            question_id=question_id,
+            run_id=run_id,
+            resolved_at=_parse_iso8601(resolved_at),
+            outcome_branch=outcome_branch,
+            resolution_notes=resolution_notes,
+            resolved_by=resolved_by,
+            source=source,
+        )
+        saved = await context.repository.save_resolution(
+            target_entity_id=target_entity_id,
+            resolution=resolution,
+        )
+        console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
+
+
+@app.command()
+def score_forecasts(
+    target_entity_id: str = typer.Option(..., help="Target entity identifier"),
+    question_id: str | None = typer.Option(None, help="Optional forecast question identifier"),
+    bins: int = typer.Option(10, help="Calibration bin count"),
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Score persisted forecast runs against stored resolutions."""
+    asyncio.run(
+        _score_forecasts_impl(
+            target_entity_id=target_entity_id,
+            question_id=question_id,
+            bins=bins,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _score_forecasts_impl(
+    *,
+    target_entity_id: str,
+    question_id: str | None,
+    bins: int,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    message_id = f"forecast-score-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        if question_id is not None:
+            question_ids = [question_id]
+        else:
+            questions = await context.repository.list_questions(target_entity_id=target_entity_id)
+            question_ids = [question.id for question in questions]
+
+        runs: list[ForecastRun] = []
+        resolutions: list[ForecastResolution] = []
+        for current_question_id in question_ids:
+            runs.extend(
+                await context.repository.list_runs(
+                    target_entity_id=target_entity_id,
+                    question_id=current_question_id,
+                )
+            )
+            resolution = await context.repository.get_resolution(
+                target_entity_id=target_entity_id,
+                question_id=current_question_id,
+            )
+            if resolution is not None:
+                resolutions.append(resolution)
+
+        report = context.scorer.score_runs(runs, resolutions, bins=bins)
+        console.print(json.dumps(report, indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
 
 
 def _metadata_datetime(value: object) -> datetime | None:
