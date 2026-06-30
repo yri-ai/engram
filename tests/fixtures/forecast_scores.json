@@ -1,0 +1,75 @@
+{
+  "runs": [
+    {
+      "id": "fr-1",
+      "question_id": "fq-1",
+      "model_or_engine": "branch_forecaster",
+      "forecast_as_of": "2026-05-01T00:00:00Z",
+      "branch_probabilities": {"advance": 0.8, "reprice": 0.2},
+      "top_branch": "advance",
+      "selected_evidence_ids": ["fact-1"],
+      "rationale": "test rationale 1",
+      "config": {"max_items": 6},
+      "metadata": {
+        "target_entity_id": "deal-123",
+        "extraction_variant": "baseline"
+      }
+    },
+    {
+      "id": "fr-2",
+      "question_id": "fq-2",
+      "model_or_engine": "branch_forecaster",
+      "forecast_as_of": "2026-05-02T00:00:00Z",
+      "branch_probabilities": {"advance": 0.3, "reprice": 0.7},
+      "top_branch": "reprice",
+      "selected_evidence_ids": ["fact-2"],
+      "rationale": "test rationale 2",
+      "config": {"max_items": 6},
+      "metadata": {
+        "target_entity_id": "deal-123",
+        "extraction_variant": "baseline"
+      }
+    },
+    {
+      "id": "fr-3",
+      "question_id": "fq-3",
+      "model_or_engine": "branch_forecaster",
+      "forecast_as_of": "2026-05-03T00:00:00Z",
+      "branch_probabilities": {"advance": 0.55, "reprice": 0.45},
+      "top_branch": "advance",
+      "selected_evidence_ids": ["fact-3"],
+      "rationale": "test rationale 3",
+      "config": {"max_items": 6},
+      "metadata": {
+        "target_entity_id": "deal-123",
+        "extraction_variant": "structured_v1"
+      }
+    }
+  ],
+  "resolutions": [
+    {
+      "question_id": "fq-1",
+      "run_id": "fr-1",
+      "resolved_at": "2026-06-01T00:00:00Z",
+      "outcome_branch": "advance",
+      "resolved_by": "analyst@example.com",
+      "source": "memo-1"
+    },
+    {
+      "question_id": "fq-2",
+      "run_id": "fr-2",
+      "resolved_at": "2026-06-02T00:00:00Z",
+      "outcome_branch": "advance",
+      "resolved_by": "analyst@example.com",
+      "source": "memo-2"
+    },
+    {
+      "question_id": "fq-3",
+      "run_id": "fr-3",
+      "resolved_at": "2026-06-03T00:00:00Z",
+      "outcome_branch": "reprice",
+      "resolved_by": "analyst@example.com",
+      "source": "memo-3"
+    }
+  ]
+}
