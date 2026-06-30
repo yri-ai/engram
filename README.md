@@ -162,6 +162,45 @@ Social connections decay slowly (0.005/day): 1.0 → 0.86 after 30 days
 
 ---
 
+## Temporal Forecasting Kernel
+
+Engram now includes an MVP foundation for a bitemporal probabilistic forecasting kernel. The goal is not “RAG for prediction”; it is forecast-time epistemology:
+
+> Given only what Engram knew at timestamp `T`, what probability should it assign to outcome `Y` by horizon `H`, and why?
+
+The kernel provides:
+
+- forecast questions with explicit `forecast_as_of`, horizon, closed outcome branches, and resolution criteria
+- evidence dossiers with provenance, record-time leakage controls, supersession state, and missing-evidence tracking
+- immutable forecast runs with probability distributions and evidence IDs
+- JSON forecast ledger storage for questions, runs, resolutions, and scores
+- deterministic baseline protocol for scoreable probabilities
+- Brier/log-score/top-k scoring and provisional calibration reports
+
+Minimal local ledger flow:
+
+```bash
+uv run engram forecast-question-create --repo /tmp/ledger --question-id q-demo \
+  --title "Will Alice renew?" --forecast-as-of 2026-01-15T00:00:00+00:00 \
+  --horizon 30d --resolution-criteria "Renewal is recorded by the horizon." \
+  --branch yes:Yes --branch no:No --status active
+
+uv run engram forecast-dossier-compile --repo /tmp/ledger --question-id q-demo \
+  --evidence-json /tmp/evidence.json --output /tmp/dossier.json
+
+uv run engram forecast-run-create --repo /tmp/ledger --question-id q-demo \
+  --dossier /tmp/dossier.json --run-id run-q-demo
+
+uv run engram forecast-resolve-create --repo /tmp/ledger --question-id q-demo \
+  --resolved-branch yes --resolved-at 2026-02-15T00:00:00+00:00
+
+uv run engram forecast-score-report --repo /tmp/ledger --output /tmp/report.json
+```
+
+See [`docs/plans/2026-06-28-temporal-forecasting-kernel.md`](docs/plans/2026-06-28-temporal-forecasting-kernel.md) for the architecture, accepted constraints, and next steps.
+
+---
+
 ## How Engram Compares
 
 | Capability | Engram | Mem0 | LightRAG | GraphRAG |
