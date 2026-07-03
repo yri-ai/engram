@@ -340,6 +340,35 @@ def init() -> None:
 
 
 @app.command()
+def consolidate(
+    group_id: str = typer.Option(..., help="Group ID whose entities to consolidate"),
+    tenant_id: str = typer.Option("default", help="Tenant ID"),
+    types: str = typer.Option("PERSON", help="Comma-separated entity types"),
+) -> None:
+    """Merge first-name/full-name duplicate person entities within a group."""
+    from engram.models.entity import EntityType
+    from engram.services.entity_resolution import consolidate_name_variants
+
+    current_settings = Settings(_env_file=".env")
+
+    async def _run() -> int:
+        store = Neo4jStore(current_settings)
+        await store.initialize()
+        try:
+            ets = [EntityType[t.strip()] for t in types.split(",") if t.strip()]
+            return await consolidate_name_variants(store, tenant_id, group_id, ets)
+        finally:
+            await store.close()
+
+    try:
+        count = asyncio.run(_run())
+        console.print(f"[bold green]✓ Consolidated {count} variant entities[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]✗ Consolidation failed: {e}[/bold red]")
+        raise typer.Exit(code=1) from e
+
+
+@app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind to"),
     port: int = typer.Option(8000, help="Port to bind to"),

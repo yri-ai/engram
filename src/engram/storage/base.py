@@ -65,6 +65,7 @@ class GraphStore(ABC):
         entity_type: EntityType | None = None,
         limit: int = 50,
         offset: int = 0,
+        group_id: str | None = None,
     ) -> list[Entity]:
         """List entities with filters."""
         ...
