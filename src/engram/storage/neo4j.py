@@ -285,6 +285,7 @@ class Neo4jStore(GraphStore):
         entity_type: EntityType | None = None,
         limit: int = 50,
         offset: int = 0,
+        group_id: str | None = None,
     ) -> list[Entity]:
         """List entities with optional filters, pagination."""
         query = "MATCH (e:Entity) WHERE e.tenant_id = $tenant_id"
@@ -293,6 +294,9 @@ class Neo4jStore(GraphStore):
         if conversation_id:
             query += " AND e.conversation_id = $conversation_id"
             params["conversation_id"] = conversation_id
+        if group_id:
+            query += " AND e.group_id = $group_id"
+            params["group_id"] = group_id
         if entity_type:
             query += " AND e.type = $type"
             params["type"] = entity_type.value
