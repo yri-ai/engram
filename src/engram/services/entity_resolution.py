@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from engram.models.entity import EntityType
+    from engram.models.entity import Entity, EntityType
     from engram.storage.base import GraphStore
 
 
@@ -63,7 +63,15 @@ def resolve_variant(canonical: str, candidates: list[str]) -> str | None:
     Returns None if there is no match, or if the match is ambiguous (two distinct fuller
     candidates that are not variants of each other).
     """
-    matches = [c for c in candidates if c and c != canonical and is_name_variant(canonical, c)]
+    n = len(_tokens(canonical))
+    # Only reuse a candidate that is at least as specific (as many tokens) as the mention, so a
+    # fuller name is never collapsed into a shorter one (e.g. "Caroline Kim" must NOT become
+    # "Caroline"). The shorter->fuller direction is handled by consolidate_name_variants.
+    matches = [
+        c
+        for c in candidates
+        if c and c != canonical and len(_tokens(c)) >= n and is_name_variant(canonical, c)
+    ]
     if not matches:
         return None
     # Prefer the most complete (most tokens) name.
@@ -96,7 +104,7 @@ async def consolidate_name_variants(
         )
         # skip entities already merged away
         ents = [e for e in ents if "merged_into" not in str(e.metadata or {})]
-        by_first: dict[str, list] = {}
+        by_first: dict[str, list[Entity]] = {}
         for e in ents:
             toks = _tokens(e.canonical_name)
             if toks:

@@ -29,3 +29,12 @@ def test_resolve_returns_none_without_match():
 def test_resolve_ambiguous_returns_none():
     # Two distinct fuller names sharing the first name -> do not merge.
     assert resolve_variant("mark", ["mark guzman", "mark zschocke"]) is None
+
+
+def test_resolve_does_not_collapse_fuller_into_shorter():
+    # A fuller mention must never be reused as a shorter existing entity.
+    assert resolve_variant("caroline kim", ["caroline"]) is None
+
+
+def test_resolve_shorter_into_fuller():
+    assert resolve_variant("caroline", ["caroline kim"]) == "caroline kim"

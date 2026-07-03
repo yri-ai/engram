@@ -56,7 +56,7 @@ class LLMProvider:
             cleaned = re.sub(r"\s*```$", "", cleaned).strip()
         try:
             return json.loads(cleaned)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as err:
             # Fallback: extract the outermost JSON object
             match = re.search(r"\{.*\}", cleaned, re.DOTALL)
             if match:
@@ -66,4 +66,6 @@ class LLMProvider:
                     raise ValueError(
                         f"Failed to parse LLM response as JSON: {e}\nContent: {content}"
                     ) from e
-            raise ValueError(f"Failed to parse LLM response as JSON.\nContent: {content}")
+            raise ValueError(
+                f"Failed to parse LLM response as JSON.\nContent: {content}"
+            ) from err

@@ -24,9 +24,9 @@ from engram.models.entity import Entity, EntityType
 from engram.models.fact import Fact
 from engram.models.message import IngestRequest, IngestResponse
 from engram.models.relationship import Evidence, Relationship, RelationshipType
-from engram.services.entity_resolution import resolve_variant
 from engram.models.run import ExtractionRun, RunStatus
 from engram.models.summary import ConversationSummary
+from engram.services.entity_resolution import resolve_variant
 
 if TYPE_CHECKING:
     from engram.llm.provider import LLMProvider
@@ -240,10 +240,10 @@ class ExtractionPipeline:
 
         # Name-variant resolution pool: existing person-like entities in this group, so a mention
         # like "Caroline" resolves to an existing "Caroline Kim" instead of creating a duplicate.
-        _PERSONISH = (EntityType.PERSON,)
+        person_types = (EntityType.PERSON,)
         variant_pool: list[str] = []
         try:
-            for _et in _PERSONISH:
+            for _et in person_types:
                 existing = await self._store.list_entities(
                     request.tenant_id, entity_type=_et, group_id=group_id, limit=500
                 )
@@ -268,7 +268,7 @@ class ExtractionPipeline:
 
             # Merge first-name/full-name variants for people ("Caroline" -> "Caroline Kim").
             extra_aliases: list[str] = []
-            if entity_type in _PERSONISH:
+            if entity_type in person_types:
                 merged = resolve_variant(canonical, variant_pool)
                 if merged and merged != canonical:
                     extra_aliases.append(canonical)
