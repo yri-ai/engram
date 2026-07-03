@@ -29,6 +29,12 @@ def _tokens(name: str) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9]+", name.lower()) if t]
 
 
+def _specificity(name: str) -> tuple[int, int]:
+    """Specificity score for preferring fuller names over initials/short forms."""
+    toks = _tokens(name)
+    return (len(toks), sum(len(t) for t in toks))
+
+
 def _token_match(a: str, b: str) -> bool:
     if a == b:
         return True
@@ -63,19 +69,23 @@ def resolve_variant(canonical: str, candidates: list[str]) -> str | None:
     Returns None if there is no match, or if the match is ambiguous (two distinct fuller
     candidates that are not variants of each other).
     """
-    n = len(_tokens(canonical))
-    # Only reuse a candidate that is at least as specific (as many tokens) as the mention, so a
-    # fuller name is never collapsed into a shorter one (e.g. "Caroline Kim" must NOT become
-    # "Caroline"). The shorter->fuller direction is handled by consolidate_name_variants.
+    canonical_specificity = _specificity(canonical)
+    # Only reuse a candidate that is at least as specific as the mention, so a fuller name is never
+    # collapsed into a shorter one (e.g. "Caroline Kim" must NOT become "Caroline", and
+    # "Anna Bethke" must NOT become "Anna B"). The shorter->fuller direction is handled by
+    # consolidate_name_variants.
     matches = [
         c
         for c in candidates
-        if c and c != canonical and len(_tokens(c)) >= n and is_name_variant(canonical, c)
+        if c
+        and c != canonical
+        and _specificity(c) >= canonical_specificity
+        and is_name_variant(canonical, c)
     ]
     if not matches:
         return None
-    # Prefer the most complete (most tokens) name.
-    matches.sort(key=lambda c: len(_tokens(c)), reverse=True)
+    # Prefer the most complete name.
+    matches.sort(key=_specificity, reverse=True)
     best = matches[0]
     # Ambiguity guard: if another match is NOT a variant of `best`, don't merge.
     for other in matches[1:]:
@@ -127,7 +137,7 @@ async def consolidate_name_variants(
                 ]
                 if len(cands) != 1:
                     continue  # no match, or ambiguous
-                primary = max(cands, key=lambda e: len(_tokens(e.canonical_name)))
+                primary = max(cands, key=lambda e: _specificity(e.canonical_name))
                 await store.merge_entity_into(primary.id, dup.id)
                 used.add(dup.id)
                 merged += 1

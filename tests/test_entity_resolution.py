@@ -34,6 +34,7 @@ def test_resolve_ambiguous_returns_none():
 def test_resolve_does_not_collapse_fuller_into_shorter():
     # A fuller mention must never be reused as a shorter existing entity.
     assert resolve_variant("caroline kim", ["caroline"]) is None
+    assert resolve_variant("anna bethke", ["anna b"]) is None
 
 
 def test_resolve_shorter_into_fuller():
