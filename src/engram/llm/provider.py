@@ -66,6 +66,4 @@ class LLMProvider:
                     raise ValueError(
                         f"Failed to parse LLM response as JSON: {e}\nContent: {content}"
                     ) from e
-            raise ValueError(
-                f"Failed to parse LLM response as JSON.\nContent: {content}"
-            ) from err
+            raise ValueError(f"Failed to parse LLM response as JSON.\nContent: {content}") from err

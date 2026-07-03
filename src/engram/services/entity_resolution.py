@@ -109,9 +109,7 @@ async def consolidate_name_variants(
     """
     merged = 0
     for et in entity_types:
-        ents = await store.list_entities(
-            tenant_id, entity_type=et, group_id=group_id, limit=5000
-        )
+        ents = await store.list_entities(tenant_id, entity_type=et, group_id=group_id, limit=5000)
         # skip entities already merged away
         ents = [e for e in ents if "merged_into" not in str(e.metadata or {})]
         by_first: dict[str, list[Entity]] = {}
