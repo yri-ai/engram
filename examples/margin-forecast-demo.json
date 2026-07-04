@@ -1,0 +1,25 @@
+{
+  "evidence": [
+    {
+      "id": "cost-pressure",
+      "text": "Management reported freight and commodity cost pressure intensified during the quarter.",
+      "event_type": "input_cost_pressure",
+      "salience": 0.92,
+      "source": "q3-call"
+    },
+    {
+      "id": "demand-weakness",
+      "text": "Demand weakness appeared in the discretionary segment as order volumes slowed.",
+      "event_type": "demand_weakness",
+      "salience": 0.86,
+      "source": "q3-call"
+    },
+    {
+      "id": "brand-campaign",
+      "text": "The company launched a new brand campaign late in the quarter.",
+      "event_type": "brand_campaign",
+      "salience": 0.7,
+      "source": "press-release"
+    }
+  ]
+}

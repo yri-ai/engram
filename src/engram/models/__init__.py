@@ -1,19 +1,41 @@
-"""Engram data models."""
+"""Domain models for Engram."""
 
 from engram.models.entity import Entity, EntityType
+from engram.models.forecasting import (
+    CalibrationSummary,
+    EvidenceDossier,
+    EvidenceItem,
+    ForecastQuestion,
+    ForecastQuestionType,
+    ForecastResolution,
+    ForecastRun,
+    ForecastScore,
+    OutcomeBranch,
+    QuestionStatus,
+    ResolutionCriteria,
+)
 from engram.models.message import IngestRequest, IngestResponse
 from engram.models.relationship import ExclusivityPolicy, Relationship, RelationshipType
-from engram.models.temporal import EvolutionQuery, PointInTimeQuery, SearchQuery
+from engram.models.temporal import EvolutionQuery
 
 __all__ = [
+    "CalibrationSummary",
     "Entity",
     "EntityType",
+    "EvidenceDossier",
+    "EvidenceItem",
     "ExclusivityPolicy",
     "EvolutionQuery",
+    "ForecastQuestion",
+    "ForecastQuestionType",
+    "ForecastResolution",
+    "ForecastRun",
+    "ForecastScore",
     "IngestRequest",
     "IngestResponse",
-    "PointInTimeQuery",
+    "OutcomeBranch",
+    "QuestionStatus",
     "Relationship",
     "RelationshipType",
-    "SearchQuery",
+    "ResolutionCriteria",
 ]

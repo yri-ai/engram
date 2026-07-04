@@ -1,0 +1,27 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>DEMO_PROOF — Temporal Forecasting Kernel</title><style>body{font-family:Inter,system-ui,sans-serif;margin:2rem;background:#f8fafc;color:#1e293b}main{max-width:1050px;margin:auto;background:white;padding:2rem;border-radius:16px;box-shadow:0 10px 30px #0001}.pass{color:#15803d;font-weight:800}.fail{color:#b91c1c;font-weight:800}code,pre{background:#e2e8f0;border-radius:6px}code{padding:.1rem .3rem}pre{padding:1rem;overflow:auto;white-space:pre-wrap}li{margin:.35rem 0}</style></head><body><main><h1>Demo Proof: Forecast Kernel Works End-to-End</h1><p><strong>Status:</strong> <span class="pass">PASS</span></p><p>This proof is not just unit tests. It creates a fresh forecast ledger, compiles evidence, creates a forecast run, resolves it, scores it, and verifies leakage rejection using the actual installed CLI commands.</p><h2>Scenario</h2><ul><li>Question: Will Alice renew by the end of the 30 day horizon?</li><li>Forecast as-of: <code>2026-01-15T00:00:00+00:00</code></li><li>Branches: <code>renew</code>, <code>churn</code></li><li>Evidence: two records known before as-of, supporting renewal / opposing churn.</li><li>Resolution: <code>renew</code>.</li><li>Negative control: future-recorded evidence is intentionally supplied and must be rejected.</li></ul><h2>Commands exercised</h2><pre>uv run engram forecast-question-create ...
+uv run engram forecast-dossier-compile ...
+uv run engram forecast-run-create ...
+uv run engram forecast-resolve-create ...
+uv run engram forecast-score-report ...
+uv run engram forecast-dossier-compile ...future_evidence.json...</pre><h2>Observed output</h2><pre>✓ Forecast question saved: q-renewal
+✓ Evidence dossier written: /tmp/engram-forecast-proof/dossier.json
+✓ Forecast run saved: run-q-renewal
+Top branch: renew
+✓ Forecast resolution saved: resolution-q-renewal
+✓ Forecast score report built: calibration-20260629140719
+Scored runs: 1
+Low sample warning: calibration report is provisional.</pre><h2>Machine-checked assertions</h2><pre>top_branch = renew
+probabilities = {'renew': 0.8320183851339245, 'churn': 0.1679816148660755}
+report_run_count = 1
+score_top_1_correct = True
+brier_score = 0.05643564586602905
+log_score = 0.18390074088833885
+leakage_rejection = ✗ Evidence e-future-leak was recorded after forecast_as_of
+assertions = PASS</pre><h2>What this proves</h2><ul><li>The CLI commands compose into a full user-visible workflow.</li><li>The forecast run produces a normalized probability distribution.</li><li>Relevant evidence changes the top branch to <code>renew</code>.</li><li>The immutable ledger stores question, run, resolution, and score artifacts.</li><li>The scorer computes Brier/log score and top-1 correctness from a real resolution.</li><li>The leakage guard rejects future-recorded evidence instead of silently using it.</li></ul><h2>Demo files</h2><pre>/tmp/engram-forecast-proof/evidence.json
+/tmp/engram-forecast-proof/dossier.json
+/tmp/engram-forecast-proof/run.json
+/tmp/engram-forecast-proof/report.json
+/tmp/engram-forecast-proof/ledger/questions/q-renewal.json
+/tmp/engram-forecast-proof/ledger/runs/run-q-renewal.json
+/tmp/engram-forecast-proof/ledger/resolutions/resolution-q-renewal.json
+/tmp/engram-forecast-proof/ledger/scores/score-run-q-renewal.json</pre></main></body></html>

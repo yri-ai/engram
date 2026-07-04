@@ -26,6 +26,7 @@ from engram.models.message import IngestRequest, IngestResponse
 from engram.models.relationship import Evidence, Relationship, RelationshipType
 from engram.models.run import ExtractionRun, RunStatus
 from engram.models.summary import ConversationSummary
+from engram.services.entity_resolution import resolve_variant
 
 if TYPE_CHECKING:
     from engram.llm.provider import LLMProvider
@@ -237,6 +238,19 @@ class ExtractionPipeline:
         # Defaults to conversation_id (conversation-scoped isolation)
         group_id = request.group_id or request.conversation_id
 
+        # Name-variant resolution pool: existing person-like entities in this group, so a mention
+        # like "Caroline" resolves to an existing "Caroline Kim" instead of creating a duplicate.
+        person_types = (EntityType.PERSON,)
+        variant_pool: list[str] = []
+        try:
+            for _et in person_types:
+                existing = await self._store.list_entities(
+                    request.tenant_id, entity_type=_et, group_id=group_id, limit=500
+                )
+                variant_pool.extend(e.canonical_name for e in existing)
+        except Exception as exc:  # never block ingestion on resolution
+            logger.debug("variant pool fetch failed: %s", exc)
+
         entities: list[Entity] = []
         for item in raw_items:
             try:
@@ -251,6 +265,16 @@ class ExtractionPipeline:
 
             # Use LLM canonical directly (it already follows normalize conventions)
             canonical = item["canonical"]
+
+            # Merge first-name/full-name variants for people ("Caroline" -> "Caroline Kim").
+            extra_aliases: list[str] = []
+            if entity_type in person_types:
+                merged = resolve_variant(canonical, variant_pool)
+                if merged and merged != canonical:
+                    extra_aliases.append(canonical)
+                    canonical = merged
+                variant_pool.append(item["canonical"])
+
             entity_id = Entity.build_id(
                 tenant_id=request.tenant_id,
                 entity_type=entity_type,
@@ -265,7 +289,7 @@ class ExtractionPipeline:
                 group_id=group_id,
                 entity_type=entity_type,
                 canonical_name=canonical,
-                aliases=[item["name"]],
+                aliases=[item["name"], *extra_aliases],
                 source_messages=[message_id],
                 extraction_run_id=run_id,
                 created_at=request.timestamp,  # Fix: Use message timestamp, not now()

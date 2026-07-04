@@ -99,11 +99,14 @@ class MemoryStore(GraphStore):
         entity_type: EntityType | None = None,
         limit: int = 50,
         offset: int = 0,
+        group_id: str | None = None,
     ) -> list[Entity]:
         """List entities with optional filters, pagination via limit/offset."""
         result = [e for e in self._entities.values() if e.tenant_id == tenant_id]
         if conversation_id is not None:
             result = [e for e in result if e.conversation_id == conversation_id]
+        if group_id is not None:
+            result = [e for e in result if e.group_id == group_id]
         if entity_type is not None:
             result = [e for e in result if e.entity_type == entity_type]
         return result[offset : offset + limit]

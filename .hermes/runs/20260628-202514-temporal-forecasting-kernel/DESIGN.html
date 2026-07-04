@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DESIGN — Temporal Forecasting Kernel</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.55; color: #172033; background: #f8fafc; }
+    main { max-width: 1180px; margin: auto; background: white; padding: 2rem; border-radius: 16px; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08); }
+    h1, h2, h3 { color: #0f172a; }
+    code, pre { background: #eef2ff; border-radius: 6px; padding: 0.15rem 0.35rem; }
+    pre { padding: 1rem; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #cbd5e1; padding: 0.6rem; vertical-align: top; }
+    th { background: #e2e8f0; text-align: left; }
+    .status { display: inline-block; padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; color: #14532d; background: #bbf7d0; }
+    .note { background: #e0f2fe; color: #075985; padding: 0.8rem; border-radius: 10px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>DESIGN — Temporal Forecasting Kernel</h1>
+  <p><span class="status">PASS</span></p>
+  <script type="application/json" id="report-metadata">
+  {
+    "phase": "design",
+    "status": "PASS",
+    "runId": "20260628-202514-temporal-forecasting-kernel",
+    "worktree": "/home/leo/dev/projects/engram/.worktree/temporal-forecasting-kernel",
+    "generatedAt": "2026-06-28T20:25:14-04:00"
+  }
+  </script>
+
+  <h2>1. Problem</h2>
+  <p>Engram currently has a temporal graph and an early branch forecasting scaffold, but forecasts are not yet durable, scoreable, leakage-safe belief objects. The next product step is not a generic retrieval or RAG app. It is a forecasting kernel that can reconstruct the evidence Engram knew at a timestamp, produce an auditable probability distribution, preserve the run immutably, and score it after resolution.</p>
+
+  <h2>2. Design Thesis</h2>
+  <pre><code>Bitemporal graph
+  → as-of evidence state
+  → forecast question / resolution contract
+  → structured forecaster protocol
+  → probabilistic forecast run
+  → immutable forecast ledger
+  → resolution + proper scoring
+  → calibration / update learning over time</code></pre>
+  <p>The core invariant: <strong>Given only what Engram knew at timestamp T, assign probabilities to outcomes by horizon H and preserve why.</strong></p>
+
+  <h2>3. Goals</h2>
+  <ul>
+    <li>Make forecast questions explicit contracts with outcome spaces and resolution criteria.</li>
+    <li>Make <code>forecast_as_of</code> mandatory for every forecast.</li>
+    <li>Compile evidence dossiers using record-time and valid-time semantics.</li>
+    <li>Store immutable forecast runs with probability distributions and evidence IDs.</li>
+    <li>Support binary and small closed-branch forecasts first.</li>
+    <li>Resolve forecasts and compute proper scores.</li>
+    <li>Track calibration buckets without claiming calibration prematurely.</li>
+  </ul>
+
+  <h2>4. Non-Goals</h2>
+  <ul>
+    <li>No temporal graph neural network training.</li>
+    <li>No learned calibration layer in the MVP.</li>
+    <li>No open-ended scenario trees in the MVP.</li>
+    <li>No vector-only evidence selection.</li>
+    <li>No autonomous web-search forecaster as the kernel.</li>
+    <li>No generic continuous numeric forecasting across domains.</li>
+  </ul>
+
+  <h2>5. Proposed Architecture</h2>
+  <pre><code>src/engram/models/forecasting.py
+  ForecastQuestion
+  OutcomeBranch
+  ResolutionCriteria
+  ForecastRun
+  ForecastResolution
+  ForecastScore
+  CalibrationBucket
+  EvidenceDossier
+  EvidenceItem
+
+src/engram/services/as_of_evidence.py
+  AsOfEvidenceCompiler
+  known-as-of filtering
+  supersession-aware packetization
+  contradiction/missing evidence packets
+
+src/engram/services/forecast_repository.py
+  ForecastRepository protocol
+  JsonForecastRepository MVP implementation
+  immutable write semantics
+
+src/engram/services/forecast_protocol.py
+  deterministic baseline protocol
+  structured LLM protocol seam for later
+  probability validation
+
+src/engram/services/forecast_scoring.py
+  binary Brier
+  multiclass Brier
+  log score
+  top-k accuracy
+  calibration bucket summaries
+
+src/engram/cli/main.py
+  forecast-question create/list/show
+  forecast-dossier compile
+  forecast-run create/show/list
+  forecast-resolve create
+  forecast-score report</code></pre>
+
+  <h2>6. Forecast Object Model</h2>
+  <table>
+    <tr><th>Object</th><th>Purpose</th><th>Required fields</th><th>Immutability</th></tr>
+    <tr><td><code>OutcomeBranch</code></td><td>Closed outcome option.</td><td><code>name</code>, <code>description</code></td><td>Immutable once question active.</td></tr>
+    <tr><td><code>ResolutionCriteria</code></td><td>How outcome is adjudicated.</td><td><code>description</code>, <code>source</code>, <code>due_at</code></td><td>Immutable once question active.</td></tr>
+    <tr><td><code>ForecastQuestion</code></td><td>Forecast contract.</td><td><code>id</code>, <code>tenant_id</code>, <code>question_type</code>, <code>objective</code>, <code>target_id</code>, <code>forecast_as_of</code>, <code>horizon</code>, <code>branches</code>, <code>resolution_criteria</code>, <code>status</code></td><td>Version rather than mutate active questions.</td></tr>
+    <tr><td><code>EvidenceItem</code></td><td>Auditable claim/event packet used by a forecast.</td><td><code>id</code>, <code>claim</code>, <code>source_id</code>, <code>valid_time</code>, <code>record_time</code>, <code>provenance</code>, <code>supersession_status</code></td><td>Immutable packet reference.</td></tr>
+    <tr><td><code>EvidenceDossier</code></td><td>Compiled as-of evidence state.</td><td><code>id</code>, <code>question_id</code>, <code>forecast_as_of</code>, <code>items</code>, <code>excluded_counts</code>, <code>missing_evidence</code>, <code>compiler_version</code></td><td>Immutable after creation.</td></tr>
+    <tr><td><code>ForecastRun</code></td><td>Time-indexed belief record.</td><td><code>id</code>, <code>question_id</code>, <code>forecast_as_of</code>, <code>run_created_at</code>, <code>dossier_id</code>, <code>protocol_version</code>, <code>probabilities</code>, <code>top_branch</code>, <code>rationale</code>, <code>evidence_ids</code></td><td>Strictly immutable.</td></tr>
+    <tr><td><code>ForecastResolution</code></td><td>Observed outcome.</td><td><code>question_id</code>, <code>resolved_at</code>, <code>outcome_branch</code>, <code>resolution_notes</code>, <code>source</code></td><td>Append-only with explicit correction records later.</td></tr>
+    <tr><td><code>ForecastScore</code></td><td>Score for one run after resolution.</td><td><code>run_id</code>, <code>question_id</code>, <code>score_type</code>, <code>value</code>, <code>resolved_branch</code></td><td>Recomputable; stored with scoring version.</td></tr>
+  </table>
+
+  <h2>7. Deterministic vs LLM-Driven Boundaries</h2>
+  <table>
+    <tr><th>Deterministic</th><th>LLM-driven / protocol-driven</th></tr>
+    <tr><td>forecast_as_of enforcement</td><td>question decomposition</td></tr>
+    <tr><td>record-time / valid-time filtering</td><td>evidence synthesis</td></tr>
+    <tr><td>supersession packet rules</td><td>mechanism/risk identification</td></tr>
+    <tr><td>probability schema validation</td><td>counterargument generation</td></tr>
+    <tr><td>immutability</td><td>probability elicitation</td></tr>
+    <tr><td>resolution storage</td><td>rationale writing</td></tr>
+    <tr><td>proper scoring</td><td>missing-evidence critique</td></tr>
+  </table>
+
+  <h2>8. As-Of Evidence Compiler</h2>
+  <p>The compiler is the moat. It must not behave like generic RAG. It reconstructs an as-of evidence state from graph facts/relationships and their provenance.</p>
+  <h3>Filtering invariants</h3>
+  <ul>
+    <li><code>recorded_from &lt;= forecast_as_of</code></li>
+    <li><code>recorded_to is null OR recorded_to &gt; forecast_as_of</code></li>
+    <li><code>source_ingested_at &lt;= forecast_as_of</code> when available</li>
+    <li><code>derived_fact_record_time &lt;= forecast_as_of</code></li>
+    <li>resolution evidence must be excluded</li>
+    <li>post-horizon or post-as-of documents are excluded unless explicitly modeled as unknowable-at-forecast-time valid-world evidence</li>
+  </ul>
+  <p>Because Engram distinguishes valid time from record time, a lease valid on Jan 1 but learned Mar 1 is excluded from a Feb 1 forecast.</p>
+
+  <h2>9. Repository Strategy</h2>
+  <p>MVP should use a simple filesystem-backed JSON repository under <code>.engram/forecasts/</code> or a configured path. This keeps the first slice low-risk while the graph store remains the source for evidence. Later, forecast runs can move into graph-backed or relational persistence.</p>
+  <p>Repository invariants:</p>
+  <ul>
+    <li><code>save_question</code> refuses mutation of active questions unless versioning is explicit.</li>
+    <li><code>save_run</code> refuses overwrite if run ID exists.</li>
+    <li><code>save_resolution</code> refuses branch names outside the question outcome space.</li>
+    <li>All writes are JSON-serializable Pydantic dumps.</li>
+  </ul>
+
+  <h2>10. Forecast Protocol</h2>
+  <p>The MVP can ship a deterministic baseline protocol that maps branch support/opposition evidence to probabilities, while preserving a seam for a structured LLM protocol.</p>
+  <ol>
+    <li>Compute base priors over branches.</li>
+    <li>Adjust by evidence support/opposition metadata.</li>
+    <li>Apply missing-evidence uncertainty penalty.</li>
+    <li>Softmax normalized branch scores into probabilities.</li>
+    <li>Validate probability sum and top branch.</li>
+    <li>Store rationale with cited evidence IDs.</li>
+  </ol>
+  <p class="note">This avoids claiming model skill before the ledger/scoring substrate exists.</p>
+
+  <h2>11. CLI Surface</h2>
+  <pre><code>engram forecast-question create \
+  --id noi-miss-001 \
+  --tenant-id default \
+  --target-id deal:abc \
+  --type binary \
+  --objective "Will NOI miss underwriting by >10% within 12 months?" \
+  --forecast-as-of 2025-01-15T00:00:00Z \
+  --horizon 365d \
+  --branch yes --branch no \
+  --resolution-criteria "Compare actual trailing NOI to underwriting model at 12 months" \
+  --resolution-source "operating statement"
+
+engram forecast-dossier compile --question-id noi-miss-001 --output dossier.json
+engram forecast-run create --question-id noi-miss-001 --dossier dossier.json --output run.json
+engram forecast-resolve create --question-id noi-miss-001 --outcome yes --source actuals.csv
+engram forecast-score report --question-id noi-miss-001</code></pre>
+
+  <h2>12. Testing Strategy</h2>
+  <table>
+    <tr><th>Test target</th><th>Behaviors</th></tr>
+    <tr><td><code>test_forecasting_models.py</code></td><td>required fields, binary/branch validation, probability validation, immutability helpers.</td></tr>
+    <tr><td><code>test_as_of_evidence.py</code></td><td>record-time cutoff, valid-time distinction, supersession preservation, future evidence exclusion.</td></tr>
+    <tr><td><code>test_forecast_repository.py</code></td><td>append-only runs, question lifecycle, resolution validation.</td></tr>
+    <tr><td><code>test_forecast_scoring.py</code></td><td>Brier, multiclass Brier, log score clipping, top-k, calibration buckets and low-n warning.</td></tr>
+    <tr><td><code>test_forecast_protocol.py</code></td><td>probabilities sum to 1, top branch consistency, cited evidence IDs.</td></tr>
+    <tr><td><code>test_cli.py</code></td><td>question/create, run/create, resolve, score command wiring with isolated temp repository.</td></tr>
+  </table>
+
+  <h2>13. Acceptance Criteria Mapping</h2>
+  <table>
+    <tr><th>AC</th><th>Design coverage</th></tr>
+    <tr><td>AC1</td><td>ForecastQuestion/OutcomeBranch/ResolutionCriteria models and CLI question create.</td></tr>
+    <tr><td>AC2</td><td>ForecastRun immutable write semantics in repository.</td></tr>
+    <tr><td>AC3</td><td>AsOfEvidenceCompiler with record-time/valid-time/supersession packets.</td></tr>
+    <tr><td>AC4</td><td>Dedicated leakage unit tests before model quality tests.</td></tr>
+    <tr><td>AC5</td><td>ForecastProtocol probability validation and top-branch invariants.</td></tr>
+    <tr><td>AC6</td><td>ForecastRun requires evidence IDs used by the rationale.</td></tr>
+    <tr><td>AC7</td><td>ForecastScoring service.</td></tr>
+    <tr><td>AC8</td><td>CLI surface listed above.</td></tr>
+    <tr><td>AC9</td><td>Deterministic-vs-LLM boundary section.</td></tr>
+    <tr><td>AC10</td><td>Verification commands and test strategy.</td></tr>
+  </table>
+
+  <h2>14. Risks and Tradeoffs</h2>
+  <ul>
+    <li><strong>JSON repository is not final persistence.</strong> It accelerates MVP but must be abstracted behind a protocol.</li>
+    <li><strong>Existing PR #10 overlaps.</strong> Reuse concepts where possible, but do not inherit architecture language that centers RAG or omits as-of kernel invariants.</li>
+    <li><strong>As-of compiler depends on fact metadata quality.</strong> Early implementation may require explicit metadata conventions for source timestamps and evidence direction.</li>
+    <li><strong>Calibration reports will have small samples.</strong> The UI/CLI must label low-n summaries as provisional.</li>
+    <li><strong>CLI nesting in Typer may require refactor.</strong> Keep command surface minimal if current CLI structure resists grouped subcommands.</li>
+  </ul>
+
+  <h2>15. Compiler Data Source Contract</h2>
+  <p>The as-of compiler must be implementable against the current repo. The first implementation should add explicit store/service methods rather than relying on the existing relationship-only point-in-time queries.</p>
+  <h3>Required graph-store/service methods</h3>
+  <pre><code>async def get_facts_as_of(
+    tenant_id: str,
+    entity_id: str,
+    forecast_as_of: datetime,
+    fact_key: str | None = None,
+    include_superseded: bool = True,
+) -> list[Fact]
+
+async def get_relationships_as_of(
+    tenant_id: str,
+    entity_id: str,
+    forecast_as_of: datetime,
+    rel_type: RelationshipType | None = None,
+    include_superseded: bool = True,
+) -> list[Relationship]
+
+async def get_target_evidence_as_of(
+    tenant_id: str,
+    target_id: str,
+    forecast_as_of: datetime,
+    structural_family: str | None = None,
+    limit: int = 200,
+) -> EvidenceDossier</code></pre>
+  <p>If changing <code>GraphStore</code> broadly is too invasive for the first slice, implement these as service-level methods over the existing <code>MemoryStore</code> internals and fact/relationship APIs, then promote them into <code>GraphStore</code> once tests stabilize.</p>
+  <h3>Target traversal scope</h3>
+  <ul>
+    <li>MVP scope starts from <code>ForecastQuestion.target_id</code>.</li>
+    <li>Include direct facts for the target entity.</li>
+    <li>Include active/as-of relationships where target is source or target.</li>
+    <li>Include facts attached to directly related entities only when the relationship is known as-of and the fact is known as-of.</li>
+    <li>Do not recurse beyond one hop in MVP unless explicitly configured.</li>
+  </ul>
+  <h3>Fact filter</h3>
+  <pre><code>known = fact.recorded_from <= forecast_as_of
+still_known = fact.recorded_to is None or fact.recorded_to > forecast_as_of
+not_resolution = metadata.resolution_for_question_id is absent or != question_id
+not_posthoc = metadata.derived_after is absent or metadata.derived_after <= forecast_as_of
+include iff known and still_known and not_resolution and not_posthoc</code></pre>
+  <h3>Relationship filter</h3>
+  <pre><code>known = relationship.recorded_from <= forecast_as_of
+still_known = relationship.recorded_to is None or relationship.recorded_to > forecast_as_of
+include iff known and still_known</code></pre>
+  <h3>Deterministic ordering and limits</h3>
+  <p>Order dossier items by <code>record_time</code>, then <code>valid_time</code>, then stable ID. Apply limit after mandatory leakage exclusions. Store excluded counts by reason: <code>future_record_time</code>, <code>retracted_before_as_of</code>, <code>resolution_evidence</code>, <code>posthoc_derived</code>, <code>outside_scope</code>, <code>limit</code>.</p>
+
+  <h2>16. Supersession and Contradiction Rules</h2>
+  <p>Superseded facts are not silently deleted from as-of dossiers. They are packetized according to what was knowable at <code>forecast_as_of</code>.</p>
+  <table>
+    <tr><th>Case</th><th>Dossier behavior</th><th>Packet status</th></tr>
+    <tr><td>Fact is active as-of: <code>recorded_from <= as_of</code>, <code>recorded_to is null or > as_of</code>, <code>status=active</code></td><td>Include as current evidence.</td><td><code>current</code></td></tr>
+    <tr><td>Fact was superseded after as-of: original fact known at as-of, replacement recorded after as-of</td><td>Include original fact as current-for-that-run; do not include replacement.</td><td><code>current_as_of_later_superseded</code></td></tr>
+    <tr><td>Fact was superseded before as-of and replacement is known as-of</td><td>Include replacement as current evidence and optionally include old fact as historical contradiction if <code>include_superseded</code>.</td><td><code>superseded_before_as_of</code> for old, <code>current</code> for replacement</td></tr>
+    <tr><td>Fact has <code>recorded_to <= as_of</code></td><td>Exclude from current evidence; include only in audit chain if requested.</td><td><code>retracted_before_as_of</code></td></tr>
+    <tr><td>Relationship has <code>valid_to <= horizon</code> but is still known</td><td>Include with valid-time window; it may be historically relevant but not active at horizon.</td><td><code>historical_valid_window</code></td></tr>
+  </table>
+  <p>Packet fields must include <code>supersession_status</code>, <code>supersedes_id</code>, <code>superseded_by_id</code> when known, <code>valid_from</code>, <code>valid_to</code>, <code>recorded_from</code>, <code>recorded_to</code>, and <code>contradicts_ids</code> when a deterministic contradiction rule identifies conflict.</p>
+
+  <h2>17. Resolution Evidence Marker Contract</h2>
+  <p>Resolution evidence and post-hoc derived facts must be identifiable before compiler tests can be meaningful. MVP metadata convention:</p>
+  <pre><code>metadata = {
+  "source_id": "...",
+  "source_path": "...",
+  "source_ingested_at": "2025-01-01T00:00:00Z",
+  "resolution_for_question_id": "optional-question-id",
+  "derived_after": "optional-ISO-timestamp",
+  "evidence_role": "forecast_evidence|resolution_evidence|posthoc_derived",
+  "structural_family": "optional-family",
+  "supports_branch": ["optional-branch"],
+  "opposes_branch": ["optional-branch"]
+}</code></pre>
+  <p>Compiler exclusion rules: exclude items with <code>evidence_role=resolution_evidence</code>, matching <code>resolution_for_question_id</code>, <code>source_ingested_at > forecast_as_of</code>, or <code>derived_after > forecast_as_of</code>. Count each exclusion reason.</p>
+
+  <h2>18. Deterministic Forecast Protocol Details</h2>
+  <p>The baseline protocol must be reproducible without hidden conventions.</p>
+  <ul>
+    <li><code>OutcomeBranch.prior</code> is optional; if omitted, use uniform priors.</li>
+    <li><code>EvidenceItem.supports_branch</code> and <code>opposes_branch</code> are explicit lists derived from metadata or branch rules.</li>
+    <li>Branch raw score: <code>log(prior) + support_weight * supports - oppose_weight * opposes - missing_penalty * missing_required_evidence</code>.</li>
+    <li>Default <code>support_weight=0.7</code>, <code>oppose_weight=0.9</code>, <code>missing_penalty=0.25</code>, <code>temperature=1.0</code>.</li>
+    <li>Softmax raw scores into probabilities.</li>
+    <li>Probability sum tolerance: <code>abs(sum(p)-1) <= 1e-6</code>.</li>
+    <li><code>top_branch</code> must equal the max-probability branch, tie-broken lexicographically for determinism.</li>
+    <li>Every rationale claim that cites evidence must cite an ID present in <code>ForecastRun.evidence_ids</code>.</li>
+  </ul>
+
+  <h2>19. Verification Commands</h2>
+  <pre><code>uv run pytest tests/unit/test_forecasting_models.py -q
+uv run pytest tests/unit/test_as_of_evidence.py -q
+uv run pytest tests/unit/test_forecast_repository.py -q
+uv run pytest tests/unit/test_forecast_protocol.py -q
+uv run pytest tests/unit/test_forecast_scoring.py -q
+uv run pytest tests/unit/test_cli.py -q
+uv run mypy src
+uv run ruff check src tests
+uv run engram --help</code></pre>
+
+  <h2>20. Design Review Readiness</h2>
+  <p>This revised design is specific enough to review against the build brief and current repo. It intentionally scopes the first implementation to models, deterministic compiler/repository/scoring/protocol, and CLI/service surface without requiring trained models or full document extraction. It now includes an explicit data-source contract, supersession semantics, resolution-evidence marker contract, deterministic protocol details, and verification commands.</p>
+</main>
+</body>
+</html>

@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -21,10 +21,28 @@ from rich.progress import Progress
 from rich.table import Table
 
 from engram.config import Settings
+from engram.models.branch_forecasting import ContextBudget
+from engram.models.forecasting import (
+    EvidenceDossier,
+    EvidenceItem,
+    ForecastQuestion,
+    ForecastQuestionType,
+    ForecastResolution,
+    ForecastRun,
+    OutcomeBranch,
+    QuestionStatus,
+    ResolutionCriteria,
+)
+from engram.services.branch_forecasting import BranchForecaster, evidence_from_path
+from engram.services.forecast_protocol import DeterministicForecastProtocol
+from engram.services.forecast_repository import ForecastRepository, JsonForecastRepository
+from engram.services.forecast_scoring import ForecastScorer, build_calibration_report
 from engram.storage.neo4j import Neo4jStore
 
 app = typer.Typer(name="engram", help="Temporal knowledge graph engine for AI memory")
 console = Console()
+settings = Settings()
+ALLOWED_BRANCH_OPTION = typer.Option(..., help="Allowed branch name; repeat for each branch")
 
 
 class CLIError(Exception):
@@ -41,6 +59,17 @@ class RelationshipRow:
     valid_from: str
     valid_to: str | None
     evidence: str
+
+
+class ForecastContext:
+    """Loaded storage and repository dependencies for forecast lifecycle commands."""
+
+    store: Neo4jStore
+    repository: ForecastRepository
+    scorer: ForecastScorer
+
+    async def close(self) -> None:
+        await self.store.close()
 
 
 class EngramHTTPClient:
@@ -181,6 +210,119 @@ def _build_client(api_url: str, timeout: float = 30.0) -> EngramHTTPClient:
     return EngramHTTPClient(api_url=api_url, timeout=timeout)
 
 
+async def _open_forecast_context(
+    *, tenant_id: str, conversation_id: str, message_id: str
+) -> ForecastContext:
+    settings = Settings(_env_file=".env")
+    store = Neo4jStore(settings)
+    await store.initialize()
+    repository = ForecastRepository(
+        store,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    return ForecastContext(store=store, repository=repository, scorer=ForecastScorer())
+
+
+def _parse_iso8601(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise CLIError(f"Invalid datetime format: {value}") from exc
+
+
+def _branch_probabilities_from_scores(result: dict[str, Any]) -> dict[str, float]:
+    raw_scores = {item["branch"]: max(float(item["score"]), 0.0) for item in result["scores"]}
+    total = sum(raw_scores.values())
+    if total <= 0.0:
+        count = len(raw_scores)
+        return {branch: 1.0 / count for branch in raw_scores} if count else {}
+    return {branch: score / total for branch, score in raw_scores.items()}
+
+
+def _build_forecast_repository(path: str | Path) -> JsonForecastRepository:
+    """Factory seam for the forecast ledger repository."""
+
+    return JsonForecastRepository(path)
+
+
+def _build_forecast_protocol() -> DeterministicForecastProtocol:
+    """Factory seam for forecast run creation."""
+
+    return DeterministicForecastProtocol()
+
+
+def _build_evidence_compiler(evidence_json: str | Path) -> JsonEvidenceDossierCompiler:
+    """Factory seam for MVP JSON evidence dossier compilation."""
+
+    return JsonEvidenceDossierCompiler(evidence_json)
+
+
+class JsonEvidenceDossierCompiler:
+    """Compile user-provided JSON evidence records into an EvidenceDossier."""
+
+    def __init__(self, evidence_json: str | Path) -> None:
+        self.evidence_json = Path(evidence_json)
+
+    def compile(self, question: ForecastQuestion) -> EvidenceDossier:
+        payload = json.loads(self.evidence_json.read_text(encoding="utf-8"))
+        raw_items = (
+            payload.get("evidence_items", payload.get("evidence", []))
+            if isinstance(payload, dict)
+            else payload
+        )
+        if not isinstance(raw_items, list):
+            raise CLIError("Evidence JSON must be a list or contain an evidence_items list")
+
+        evidence_items = [EvidenceItem.model_validate(item) for item in raw_items]
+        for item in evidence_items:
+            self._validate_item_known_as_of(item, question)
+
+        return EvidenceDossier(
+            id=f"dossier-{question.id}",
+            question_id=question.id,
+            forecast_as_of=question.forecast_as_of,
+            evidence_items=evidence_items,
+            compiler="json_evidence.v1",
+        )
+
+    @staticmethod
+    def _validate_item_known_as_of(item: EvidenceItem, question: ForecastQuestion) -> None:
+        if item.recorded_from > question.forecast_as_of:
+            raise CLIError(f"Evidence {item.id} was recorded after forecast_as_of")
+        if item.valid_from > question.forecast_as_of:
+            raise CLIError(f"Evidence {item.id} has valid_from after forecast_as_of")
+
+        source_ingested_at = _metadata_datetime(item.metadata.get("source_ingested_at"))
+        if source_ingested_at is not None and source_ingested_at > question.forecast_as_of:
+            raise CLIError(f"Evidence {item.id} source was ingested after forecast_as_of")
+        if item.metadata.get("evidence_role") == "resolution_evidence":
+            raise CLIError(f"Evidence {item.id} is marked as resolution evidence")
+        if item.metadata.get("resolution_for_question_id") == question.id:
+            raise CLIError(f"Evidence {item.id} is resolution evidence for this question")
+        derived_after = _metadata_datetime(item.metadata.get("derived_after"))
+        if derived_after is not None and derived_after > question.forecast_as_of:
+            raise CLIError(f"Evidence {item.id} was derived after forecast_as_of")
+
+
+async def _initialize_neo4j_schema(current_settings: Settings) -> None:
+    store = Neo4jStore(current_settings)
+    try:
+        await store.initialize()
+    finally:
+        await store.close()
+
+
+async def _check_neo4j_store_health(current_settings: Settings) -> bool:
+    store = Neo4jStore(current_settings)
+    try:
+        await store.initialize()
+        return await store.health_check()
+    finally:
+        await store.close()
+
+
 @app.command()
 def init() -> None:
     """Initialize the Neo4j schema and indexes."""
@@ -188,16 +330,41 @@ def init() -> None:
 
     try:
         settings = Settings(_env_file=".env")
-        store = Neo4jStore(settings)
-
-        # Run async initialization
-        asyncio.run(store.initialize())
-        asyncio.run(store.close())
+        asyncio.run(_initialize_neo4j_schema(settings))
 
         console.print("[bold green]✓ Schema initialized successfully![/bold green]")
         console.print(f"[dim]Neo4j URI: {settings.neo4j_uri}[/dim]")
     except Exception as e:
-        console.print(f"[bold red]✗ Initialization failed: {e}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ Initialization failed: {e}[/bold red]")
+        raise typer.Exit(code=1) from e
+
+
+@app.command()
+def consolidate(
+    group_id: str = typer.Option(..., help="Group ID whose entities to consolidate"),
+    tenant_id: str = typer.Option("default", help="Tenant ID"),
+    types: str = typer.Option("PERSON", help="Comma-separated entity types"),
+) -> None:
+    """Merge first-name/full-name duplicate person entities within a group."""
+    from engram.models.entity import EntityType
+    from engram.services.entity_resolution import consolidate_name_variants
+
+    current_settings = Settings(_env_file=".env")
+
+    async def _run() -> int:
+        store = Neo4jStore(current_settings)
+        await store.initialize()
+        try:
+            ets = [EntityType[t.strip()] for t in types.split(",") if t.strip()]
+            return await consolidate_name_variants(store, tenant_id, group_id, ets)
+        finally:
+            await store.close()
+
+    try:
+        count = asyncio.run(_run())
+        console.print(f"[bold green]✓ Consolidated {count} variant entities[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]✗ Consolidation failed: {e}[/bold red]")
         raise typer.Exit(code=1) from e
 
 
@@ -239,14 +406,14 @@ def ingest(
     """
     file_path = Path(file)
     if not file_path.exists():
-        console.print(f"[bold red]✗ File not found: {file}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ File not found: {file}[/bold red]")
         raise typer.Exit(code=1)
 
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError as exc:
-        console.print(f"[bold red]✗ Invalid JSON: {exc}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ Invalid JSON: {exc}[/bold red]")
         raise typer.Exit(code=1) from exc
 
     messages = data.get("messages", [])
@@ -288,10 +455,10 @@ def ingest(
 
         console.print(table)
     except httpx.HTTPError as exc:
-        console.print(f"[bold red]✗ API request failed: {exc}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ API request failed: {exc}[/bold red]")
         raise typer.Exit(code=1) from exc
     except CLIError as exc:
-        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ {exc}[/bold red]")
         raise typer.Exit(code=1) from exc
     finally:
         client.close()
@@ -323,7 +490,7 @@ def query(
         try:
             datetime.fromisoformat(as_of.replace("Z", "+00:00"))
         except ValueError as exc:
-            console.print(f"[bold red]✗ Invalid date format: {as_of}[/bold red]", file=sys.stderr)
+            console.print(f"[bold red]✗ Invalid date format: {as_of}[/bold red]")
             raise typer.Exit(code=1) from exc
 
     client = _build_client(api_url, timeout)
@@ -354,13 +521,597 @@ def query(
         _render_relationships(entity_record, relationships)
 
     except httpx.HTTPError as exc:
-        console.print(f"[bold red]✗ API request failed: {exc}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ API request failed: {exc}[/bold red]")
         raise typer.Exit(code=1) from exc
     except CLIError as exc:
-        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ {exc}[/bold red]")
         raise typer.Exit(code=1) from exc
     finally:
         client.close()
+
+
+@app.command()
+def forecast(
+    file: str = typer.Argument(..., help="Path to forecast evidence JSON/NDJSON or directory"),
+    objective: str = typer.Option(..., help="Decision objective to forecast against"),
+    structural_family: str = typer.Option("margin_analysis", help="Forecast structural family"),
+    max_items: int = typer.Option(6, help="Maximum evidence items to use"),
+    max_tokens: int = typer.Option(1200, help="Maximum approximate context tokens"),
+    min_score: float = typer.Option(0.0, help="Minimum evidence salience to consider"),
+    output: str | None = typer.Option(None, help="Optional JSON output path"),
+) -> None:
+    """Forecast plausible next branches from compact evidence."""
+    file_path = Path(file)
+    if not file_path.exists():
+        console.print(f"[bold red]✗ File not found: {file}[/bold red]")
+        raise typer.Exit(code=1)
+
+    try:
+        evidence = evidence_from_path(file_path)
+        if not evidence:
+            raise CLIError("No forecast evidence found")
+
+        forecaster = BranchForecaster()
+        result = forecaster.forecast(
+            objective=objective,
+            structural_family=structural_family,
+            evidence=evidence,
+            budget=ContextBudget(
+                max_items=max_items,
+                max_tokens=max_tokens,
+                min_score=min_score,
+            ),
+        )
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    result_payload = result.model_dump(mode="json")
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(result_payload, indent=2), encoding="utf-8")
+        console.print(f"[bold green]✓ Forecast written to {output}[/bold green]")
+
+    _render_forecast(result_payload)
+
+
+@app.command("forecast-question-create")
+def forecast_question_create(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    question_id: str = typer.Option(..., help="Question ID"),
+    title: str = typer.Option(..., help="Question title"),
+    forecast_as_of: str = typer.Option(..., help="Forecast as-of timestamp"),
+    horizon: str = typer.Option(..., help="Forecast horizon label"),
+    resolution_criteria: str = typer.Option(..., help="Resolution criteria description"),
+    branch: Annotated[
+        list[str] | None, typer.Option("--branch", help="Branch as id:label or id:label:prior")
+    ] = None,
+    resolved_by: str | None = typer.Option(None, help="Optional resolution deadline timestamp"),
+    tenant_id: str = typer.Option("default", help="Tenant ID"),
+    target_id: str | None = typer.Option(None, help="Optional target entity ID"),
+    question_type: str | None = typer.Option(
+        None, help="binary or closed_branch; inferred by default"
+    ),
+    status: str = typer.Option("draft", help="Question status"),
+) -> None:
+    """Create a forecast question in the JSON forecast ledger."""
+
+    try:
+        if not branch:
+            raise CLIError("At least one --branch option is required")
+        branches = [_parse_branch_option(value) for value in branch]
+        inferred_type = "binary" if len(branches) == 2 else "closed_branch"
+        question = ForecastQuestion(
+            id=question_id,
+            tenant_id=tenant_id,
+            title=title,
+            question_type=ForecastQuestionType(question_type or inferred_type),
+            forecast_as_of=_parse_datetime(forecast_as_of, "forecast-as-of"),
+            horizon=horizon,
+            resolution_criteria=ResolutionCriteria(
+                description=resolution_criteria,
+                resolved_by=_parse_datetime(resolved_by, "resolved-by") if resolved_by else None,
+            ),
+            branches=branches,
+            target_id=target_id,
+            status=QuestionStatus(status),
+        )
+        _build_forecast_repository(repo).save_question(question)
+    except (OSError, ValueError, CLIError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Forecast question saved: {question.id}[/bold green]")
+
+
+@app.command("forecast-dossier-compile")
+def forecast_dossier_compile(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    question_id: str = typer.Option(..., help="Question ID"),
+    evidence_json: str = typer.Option(..., help="JSON evidence records path"),
+    output: str = typer.Option(..., help="Output dossier JSON path"),
+) -> None:
+    """Compile an MVP EvidenceDossier from JSON evidence records, without Neo4j."""
+
+    try:
+        repository = _build_forecast_repository(repo)
+        question = repository.load_question(question_id)
+        dossier = _build_evidence_compiler(evidence_json).compile(question)
+        _write_model_json(Path(output), dossier)
+    except (OSError, ValueError, CLIError, json.JSONDecodeError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Evidence dossier written: {output}[/bold green]")
+
+
+@app.command("forecast-run-create")
+def forecast_run_create(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    question_id: str = typer.Option(..., help="Question ID"),
+    dossier: str = typer.Option(..., help="Evidence dossier JSON path"),
+    run_id: str | None = typer.Option(None, help="Optional run ID"),
+    output: str | None = typer.Option(None, help="Optional run JSON output path"),
+) -> None:
+    """Create and persist a deterministic forecast run."""
+
+    try:
+        repository = _build_forecast_repository(repo)
+        question = repository.load_question(question_id)
+        evidence_dossier = EvidenceDossier.model_validate_json(
+            Path(dossier).read_text(encoding="utf-8")
+        )
+        run = _build_forecast_protocol().create_run(question, evidence_dossier, run_id=run_id)
+        repository.save_run(run)
+        if output:
+            _write_model_json(Path(output), run)
+    except (OSError, ValueError, FileExistsError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Forecast run saved: {run.id}[/bold green]")
+    console.print(f"[bold blue]Top branch: {run.top_branch}[/bold blue]")
+
+
+@app.command("forecast-resolve-create")
+def forecast_resolve_create(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    question_id: str = typer.Option(..., help="Question ID"),
+    resolved_branch: str = typer.Option(..., help="Resolved branch ID"),
+    resolved_at: str = typer.Option(..., help="Resolution timestamp"),
+    resolution_id: str | None = typer.Option(None, help="Optional resolution ID"),
+    evidence_id: Annotated[
+        list[str] | None, typer.Option("--evidence-id", help="Resolution evidence ID")
+    ] = None,
+    notes: str | None = typer.Option(None, help="Resolution notes"),
+) -> None:
+    """Create a forecast resolution in the JSON forecast ledger."""
+
+    try:
+        repository = _build_forecast_repository(repo)
+        question = repository.load_question(question_id)
+        resolution = ForecastResolution(
+            id=resolution_id or f"resolution-{question_id}",
+            question_id=question_id,
+            branch_ids=[branch.id for branch in question.branches],
+            resolved_branch=resolved_branch,
+            resolved_at=_parse_datetime(resolved_at, "resolved-at"),
+            evidence_ids=evidence_id or [],
+            notes=notes,
+        )
+        repository.save_resolution(resolution)
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Forecast resolution saved: {resolution.id}[/bold green]")
+
+
+@app.command("forecast-score-report")
+def forecast_score_report(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    bucket_count: int = typer.Option(10, help="Calibration bucket count"),
+    low_sample_threshold: int = typer.Option(30, help="Low-sample warning threshold"),
+    skip_missing_resolutions: bool = typer.Option(False, help="Skip runs without resolutions"),
+    output: str | None = typer.Option(None, help="Optional report JSON output path"),
+) -> None:
+    """Build a score and provisional calibration report for resolved forecast runs."""
+
+    try:
+        repository = _build_forecast_repository(repo)
+        report = build_calibration_report(
+            repository,
+            bucket_count=bucket_count,
+            low_sample_threshold=low_sample_threshold,
+            skip_missing_resolutions=skip_missing_resolutions,
+        )
+        if output:
+            _write_model_json(Path(output), report)
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Forecast score report built: {report.id}[/bold green]")
+    console.print(f"[bold blue]Scored runs: {report.run_count}[/bold blue]")
+    if report.low_sample_warning:
+        console.print("[yellow]Low sample warning: calibration report is provisional.[/yellow]")
+
+
+@app.command()
+def create_forecast_question(
+    target_entity_id: str = typer.Option(..., help="Target entity to forecast"),
+    objective: str = typer.Option(..., help="Decision objective to forecast against"),
+    structural_family: str = typer.Option(..., help="Forecast structural family"),
+    forecast_as_of: str = typer.Option(..., help="Evidence cutoff timestamp"),
+    horizon: str = typer.Option(..., help="Forecast horizon label"),
+    resolution_due_at: str = typer.Option(..., help="Expected resolution deadline"),
+    resolution_criteria: str = typer.Option(..., help="Objective resolution criteria"),
+    allowed_branch: list[str] = ALLOWED_BRANCH_OPTION,
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Persist a canonical forecast question."""
+    asyncio.run(
+        _create_forecast_question_impl(
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=forecast_as_of,
+            horizon=horizon,
+            resolution_due_at=resolution_due_at,
+            resolution_criteria=resolution_criteria,
+            allowed_branch=allowed_branch,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _create_forecast_question_impl(
+    *,
+    target_entity_id: str,
+    objective: str,
+    structural_family: str,
+    forecast_as_of: str,
+    horizon: str,
+    resolution_due_at: str,
+    resolution_criteria: str,
+    allowed_branch: list[str],
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    message_id = f"forecast-question-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        parsed_forecast_as_of = _parse_iso8601(forecast_as_of)
+        question = ForecastQuestion(
+            id=ForecastQuestion.build_id(
+                tenant_id=tenant_id,
+                target_entity_id=target_entity_id,
+                objective=objective,
+                forecast_as_of=parsed_forecast_as_of,
+            ),
+            tenant_id=tenant_id,
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=parsed_forecast_as_of,
+            horizon=horizon,
+            resolution_due_at=_parse_iso8601(resolution_due_at),
+            resolution_criteria=resolution_criteria,
+            allowed_branch_names=allowed_branch,
+        )
+        saved = await context.repository.save_question(question)
+        console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
+
+
+@app.command()
+def run_forecast(
+    file: str = typer.Argument(..., help="Path to forecast evidence JSON/NDJSON or directory"),
+    question_id: str = typer.Option(..., help="Forecast question identifier"),
+    target_entity_id: str = typer.Option(..., help="Target entity identifier"),
+    objective: str = typer.Option(..., help="Decision objective to forecast against"),
+    structural_family: str = typer.Option(..., help="Forecast structural family"),
+    forecast_as_of: str = typer.Option(..., help="Evidence cutoff timestamp"),
+    max_items: int = typer.Option(6, help="Maximum evidence items to use"),
+    max_tokens: int = typer.Option(1200, help="Maximum approximate context tokens"),
+    min_score: float = typer.Option(0.0, help="Minimum evidence salience to consider"),
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Run a forecast and persist the immutable run artifact."""
+    asyncio.run(
+        _run_forecast_impl(
+            file=file,
+            question_id=question_id,
+            target_entity_id=target_entity_id,
+            objective=objective,
+            structural_family=structural_family,
+            forecast_as_of=forecast_as_of,
+            max_items=max_items,
+            max_tokens=max_tokens,
+            min_score=min_score,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _run_forecast_impl(
+    *,
+    file: str,
+    question_id: str,
+    target_entity_id: str,
+    objective: str,
+    structural_family: str,
+    forecast_as_of: str,
+    max_items: int,
+    max_tokens: int,
+    min_score: float,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    file_path = Path(file)
+    if not file_path.exists():
+        console.print(f"[bold red]✗ File not found: {file}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1)
+
+    message_id = f"forecast-run-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        parsed_forecast_as_of = _parse_iso8601(forecast_as_of)
+        evidence = evidence_from_path(file_path)
+        if not evidence:
+            raise CLIError("No forecast evidence found")
+        result = BranchForecaster().forecast(
+            objective=objective,
+            structural_family=structural_family,
+            evidence=evidence,
+            budget=ContextBudget(max_items=max_items, max_tokens=max_tokens, min_score=min_score),
+            forecast_as_of=parsed_forecast_as_of,
+        )
+        payload = result.model_dump(mode="json")
+        config = {"max_items": max_items, "max_tokens": max_tokens, "min_score": min_score}
+        run = ForecastRun(
+            id=ForecastRun.build_id(
+                question_id=question_id,
+                model_or_engine="branch_forecaster",
+                forecast_as_of=parsed_forecast_as_of,
+                config=config,
+            ),
+            question_id=question_id,
+            model_or_engine="branch_forecaster",
+            forecast_as_of=parsed_forecast_as_of,
+            branch_probabilities=_branch_probabilities_from_scores(payload),
+            top_branch=result.top_branch,
+            selected_evidence_ids=[item["id"] for item in payload["selected_context"]],
+            evidence_gaps=result.evidence_gaps,
+            rationale="; ".join(
+                f"{score.branch}: {score.rationale}" for score in result.scores[:2]
+            ),
+            config=config,
+            metadata={
+                "branch_forecast": payload,
+                "target_entity_id": target_entity_id,
+                "extraction_variant": "default",
+            },
+        )
+        saved = await context.repository.save_run(target_entity_id=target_entity_id, run=run)
+        console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
+
+
+@app.command()
+def resolve_forecast(
+    question_id: str = typer.Option(..., help="Forecast question identifier"),
+    run_id: str = typer.Option(..., help="Forecast run identifier"),
+    target_entity_id: str = typer.Option(..., help="Target entity identifier"),
+    outcome_branch: str = typer.Option(..., help="Observed outcome branch"),
+    resolved_at: str = typer.Option(..., help="Observed resolution timestamp"),
+    resolved_by: str = typer.Option(..., help="Analyst or system resolving the outcome"),
+    source: str = typer.Option(..., help="Resolution evidence source"),
+    resolution_notes: str | None = typer.Option(None, help="Optional resolution notes"),
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Persist an observed resolution for a forecast question."""
+    asyncio.run(
+        _resolve_forecast_impl(
+            question_id=question_id,
+            run_id=run_id,
+            target_entity_id=target_entity_id,
+            outcome_branch=outcome_branch,
+            resolved_at=resolved_at,
+            resolved_by=resolved_by,
+            source=source,
+            resolution_notes=resolution_notes,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _resolve_forecast_impl(
+    *,
+    question_id: str,
+    run_id: str,
+    target_entity_id: str,
+    outcome_branch: str,
+    resolved_at: str,
+    resolved_by: str,
+    source: str,
+    resolution_notes: str | None,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    message_id = f"forecast-resolution-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        resolution = ForecastResolution(
+            question_id=question_id,
+            run_id=run_id,
+            resolved_at=_parse_iso8601(resolved_at),
+            outcome_branch=outcome_branch,
+            resolution_notes=resolution_notes,
+            resolved_by=resolved_by,
+            source=source,
+        )
+        saved = await context.repository.save_resolution(
+            target_entity_id=target_entity_id,
+            resolution=resolution,
+        )
+        console.print(json.dumps(saved.model_dump(mode="json"), indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
+
+
+@app.command()
+def score_forecasts(
+    target_entity_id: str = typer.Option(..., help="Target entity identifier"),
+    question_id: str | None = typer.Option(None, help="Optional forecast question identifier"),
+    bins: int = typer.Option(10, help="Calibration bin count"),
+    tenant_id: str = typer.Option("default", help="Tenant identifier"),
+    conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+) -> None:
+    """Score persisted forecast runs against stored resolutions."""
+    asyncio.run(
+        _score_forecasts_impl(
+            target_entity_id=target_entity_id,
+            question_id=question_id,
+            bins=bins,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+    )
+
+
+async def _score_forecasts_impl(
+    *,
+    target_entity_id: str,
+    question_id: str | None,
+    bins: int,
+    tenant_id: str,
+    conversation_id: str,
+) -> None:
+    message_id = f"forecast-score-{uuid.uuid4()}"
+    context = await _open_forecast_context(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+    )
+    try:
+        if question_id is not None:
+            question_ids = [question_id]
+        else:
+            questions = await context.repository.list_questions(target_entity_id=target_entity_id)
+            question_ids = [question.id for question in questions]
+
+        runs: list[ForecastRun] = []
+        resolutions: list[ForecastResolution] = []
+        for current_question_id in question_ids:
+            runs.extend(
+                await context.repository.list_runs(
+                    target_entity_id=target_entity_id,
+                    question_id=current_question_id,
+                )
+            )
+            resolution = await context.repository.get_resolution(
+                target_entity_id=target_entity_id,
+                question_id=current_question_id,
+            )
+            if resolution is not None:
+                resolutions.append(resolution)
+
+        report = context.scorer.score_runs(runs, resolutions, bins=bins)
+        console.print(json.dumps(report, indent=2))
+    except (CLIError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]", file=sys.stderr)
+        raise typer.Exit(code=1) from exc
+    finally:
+        await context.close()
+
+
+def _metadata_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return None
+
+
+def _parse_branch_option(value: str) -> OutcomeBranch:
+    parts = value.split(":")
+    if len(parts) not in {2, 3} or not parts[0] or not parts[1]:
+        raise CLIError("Branch must use id:label or id:label:prior")
+    prior = float(parts[2]) if len(parts) == 3 and parts[2] else None
+    return OutcomeBranch(id=parts[0], label=parts[1], prior=prior)
+
+
+def _parse_datetime(value: str, field_name: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise CLIError(f"Invalid {field_name} datetime: {value}") from exc
+
+
+def _write_model_json(path: Path, model: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(model.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+
+def _render_forecast(result: dict[str, Any]) -> None:
+    console.print(
+        f"[bold blue]Forecast[/bold blue] objective={result['objective']} "
+        f"family={result['structural_family']}"
+    )
+    console.print(f"[bold green]Top branch: {result['top_branch']}[/bold green]")
+
+    table = Table(title="Branch Scores")
+    table.add_column("Branch", style="cyan")
+    table.add_column("Score", style="green")
+    table.add_column("Evidence", style="magenta")
+    table.add_column("Missing", style="yellow")
+    table.add_column("Rationale", style="dim")
+
+    for score in result["scores"]:
+        table.add_row(
+            score["branch"],
+            f"{score['score']:.3f}",
+            ", ".join(score["matched_evidence_ids"]) or "-",
+            ", ".join(score["missing_precursors"]) or "-",
+            score["rationale"],
+        )
+    console.print(table)
+
+    if result["evidence_gaps"]:
+        console.print(
+            "[bold yellow]Evidence gaps:[/bold yellow] " + ", ".join(result["evidence_gaps"])
+        )
 
 
 def _resolve_entity(
@@ -454,13 +1205,9 @@ def health() -> None:
 
     try:
         settings = Settings(_env_file=".env")
-        store = Neo4jStore(settings)
 
         # Check Neo4j
-        asyncio.run(store.initialize())
-        neo4j_healthy = asyncio.run(store.health_check())
-        asyncio.run(store.close())
-
+        neo4j_healthy = asyncio.run(_check_neo4j_store_health(settings))
         status_icon = "[bold green]✓[/bold green]" if neo4j_healthy else "[bold red]✗[/bold red]"
         console.print(f"{status_icon} Neo4j: {settings.neo4j_uri}")
 
@@ -469,13 +1216,20 @@ def health() -> None:
             try:
                 import redis.asyncio as aioredis
 
-                redis_client = aioredis.from_url(
-                    f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
-                    password=settings.redis_password,
-                    decode_responses=True,
-                )
-                redis_healthy = asyncio.run(redis_client.ping())
-                asyncio.run(redis_client.close())
+                async def check_redis() -> bool:
+                    redis_client = aioredis.from_url(
+                        f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}",
+                        password=settings.redis_password,
+                        decode_responses=True,
+                    )
+                    redis_client_any = cast("Any", redis_client)
+                    try:
+                        await redis_client_any.ping()
+                        return True
+                    finally:
+                        await redis_client_any.aclose()
+
+                redis_healthy = asyncio.run(check_redis())
                 status_icon = (
                     "[bold green]✓[/bold green]" if redis_healthy else "[bold red]✗[/bold red]"
                 )
@@ -495,7 +1249,7 @@ def health() -> None:
             raise typer.Exit(code=1)
 
     except Exception as e:
-        console.print(f"[bold red]✗ Health check failed: {e}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ Health check failed: {e}[/bold red]")
         raise typer.Exit(code=1) from e
 
 
@@ -529,7 +1283,7 @@ def export(
         console.print("[dim]Relationships: 0[/dim]")
 
     except Exception as e:
-        console.print(f"[bold red]✗ Export failed: {e}[/bold red]", file=sys.stderr)
+        console.print(f"[bold red]✗ Export failed: {e}[/bold red]")
         raise typer.Exit(code=1) from e
 
 
