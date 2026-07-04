@@ -10,15 +10,15 @@
 
 - **Forecasting engine:** `BranchForecaster.forecast(...)` (`src/engram/services/branch_forecasting.py:502`) and the auditable run-creation path `DeterministicForecastProtocol` (`src/engram/services/forecast_protocol.py`). These produce forecasts; they do not score.
 - **Scoring layer:** `src/engram/services/forecast_scoring.py` — `ForecastScorer`, Brier/log/top-k metrics, `build_calibration_report` (ECE via calibration buckets).
-- **Evidence integrity:** `AsOfEvidenceCompiler` (`src/engram/services/as_of_evidence.py`) enforces cutoff/leakage rules at compile time; CLI re-checks at run creation (`cli/main.py` forecast-run-create guards).
+- **Evidence integrity:** `AsOfEvidenceCompiler` (`src/engram/services/as_of_evidence.py`) enforces cutoff/leakage rules at compile time; CLI re-checks at run creation (`src/engram/cli/main.py` forecast-run-create guards).
 - **Persistence — primary:** `JsonForecastRepository` (`src/engram/services/forecast_repository.py:26`), the append-only JSON ledger (`questions/ runs/ resolutions/ scores/`). This is the MVP path of record.
-- **Persistence — secondary/compat:** graph-backed `ForecastRepository` (`forecast_repository.py:118`). Status: compatibility layer for graph-native deployments. Parity contract: any artifact written to one backend must round-trip through the other via export/import without loss (test-enforced in M7 Task 1). New features land JSON-first; graph parity follows or the gap is documented per release.
+- **Persistence — secondary/compat:** graph-backed `ForecastRepository` (`forecast_repository.py:118`). Status: compatibility layer for graph-native deployments. **Parity scope (explicit):** the graph backend supports questions, runs, and resolutions only; scores, dossiers, and decision records are JSON-ledger-only until graph support is added (tracked, not assumed). Parity contract applies to the supported subset: questions/runs/resolutions written to one backend must round-trip through the other via a normalized export format without semantic loss (field-normalized comparison, not byte equality — test-enforced in M7 Task 1). New features land JSON-first; each release documents the graph-backend gap list.
 
 ## CLI Surface (one canonical set)
 
-**Canonical (kernel commands, `cli/main.py:579–718`):** `forecast-question-create`, `forecast-dossier-compile`, `forecast-run-create`, `forecast-resolve-create`, `forecast-score-report`.
+**Canonical (kernel commands, `src/engram/cli/main.py:579–718`):** `forecast-question-create`, `forecast-dossier-compile`, `forecast-run-create`, `forecast-resolve-create`, `forecast-score-report`.
 
-**Legacy (deprecated as of v2):** `create-forecast-question`, `run-forecast`, `resolve-forecast`, `score-forecasts` (`cli/main.py:741–1021`). M7 Task 0 adds deprecation warnings; removal one minor release later. Docs and examples reference canonical commands only.
+**Legacy (deprecated as of v2):** `create-forecast-question`, `run-forecast`, `resolve-forecast`, `score-forecasts` (`src/engram/cli/main.py:741–1021`). M7 Task 0 adds deprecation warnings in the next tagged release; **removal gate:** legacy commands are removed in the first tagged minor release *after* a release that shipped the warnings (two-release window). If no tagged release process exists when M7 Task 0 lands, removal is blocked on the release-cadence work in `2026-07-04-adoption-dx-execution.md` Phase H3 — deprecation warnings ship regardless. Docs and examples reference canonical commands only.
 
 ## Milestones
 
@@ -69,7 +69,7 @@ Pass criteria:
 
 Pass criteria (mechanics defined in M7):
 
-1. Forecast outputs referenced in ≥10 persisted `DecisionRecord` artifacts (M7 Task 2) linking `decision_id -> forecast_run_ids`.
+1. Forecast outputs referenced in ≥10 persisted `DecisionRecord` artifacts (M7 Task 2), each with a `primary_forecast_run_id`; impact metrics computed on primary runs only (pending decisions excluded from denominators).
 2. ≥1 impact metric improved vs. the pre-forecast baseline window: decision hit-rate (decisions consistent with resolved outcome) or recorded avoided-loss, computed by `forecast-impact-report` (M7 Task 3).
 3. Impact evidence is ledger-linked (decision → run → resolution chains), not anecdotal.
 4. Measurement period ≥ one full evaluation window; baseline = decision hit-rate in the window preceding first forecast-referenced decision.
@@ -80,7 +80,7 @@ Unchanged: Layers 1+2+3 all complete, in order. No layer closes without its name
 
 ## Persistence Integrity (new in v2)
 
-- **Schema versioning:** every lifecycle artifact carries `schema_version` (M7 Task 1 adds the field, default `1`, validated on read).
+- **Schema versioning:** `schema_version` (default `1`, validated on read) is added by M7 Task 1 to exactly these models in `src/engram/models/forecasting.py`: `ForecastQuestion`, `EvidenceDossier`, `ForecastRun`, `ForecastResolution`, `ForecastScore`, `CalibrationSummary`, and new `DecisionRecord`/`BeliefUpdate`. Nested value objects (`OutcomeBranch`, `ResolutionCriteria`, `EvidenceItem`) are versioned by their parent artifact and do not carry their own field.
 - **Migration rule:** the ledger is append-only; migrations are forward-only rewrites into a new ledger directory with a verification diff (`old count == new count`, IDs preserved, scores recomputed and compared). No in-place mutation.
 - **Rollback rule:** previous ledger directory is retained until the migrated ledger passes `forecast-audit-report`; rollback = repoint `--repo`.
 - **JSON↔graph compatibility:** round-trip export/import parity test is the M7 Task 1 acceptance check; graph-backed writes carry the same `schema_version`.

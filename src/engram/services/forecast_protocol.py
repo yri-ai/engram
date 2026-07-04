@@ -44,6 +44,17 @@ class DeterministicForecastProtocol:
             raise ValueError("dossier question_id must match question id")
         if dossier.forecast_as_of != question.forecast_as_of:
             raise ValueError("dossier forecast_as_of must match question forecast_as_of")
+        if not question.branches:
+            raise ValueError(
+                "DeterministicForecastProtocol requires a temporal-kernel question "
+                "with a non-empty 'branches' set (graph-lifecycle questions using "
+                "allowed_branch_names are not scoreable by this protocol)"
+            )
+        if dossier.metadata.get("audit_mode"):
+            raise ValueError(
+                "dossier was compiled in audit mode (contains post-as_of supersession "
+                "metadata) and must not be used for forecasting"
+            )
 
         branch_ids = [branch.id for branch in question.branches]
         branch_id_set = set(branch_ids)

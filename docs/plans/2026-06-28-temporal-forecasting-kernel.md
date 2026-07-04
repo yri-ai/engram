@@ -203,11 +203,81 @@ uv run engram forecast-score-report \
 - continuous numeric forecasting
 - claims that probabilities are calibrated
 
-## Next steps
+## Next steps (executable)
 
-1. Add a Neo4j adapter for `GraphEvidenceAdapter`.
-2. Persist evidence dossiers directly in the forecast ledger or graph.
-3. Add API endpoints around the same lifecycle.
-4. Add prompt/model protocol versions for LLM-assisted forecasting.
-5. Build a real-estate diligence demo using timestamped private evidence.
-6. Add prequential belief update objects and update-quality scoring.
+> Status doc note: this section was previously a wish list. It is now the execution
+> contract for kernel follow-on work. Ordering is top-to-bottom; each task states
+> touched files, tests, and done criteria. Persistence changes follow the
+> schema-version/migration rules in the master plan v2 (`2026-05-18-forecast-lifecycle-master-plan.md`,
+> "Persistence Integrity") — no task below may change artifact shape without a
+> `schema_version` bump and forward-only ledger migration.
+
+### NS-1: Neo4j adapter for `GraphEvidenceAdapter`
+
+- **Files:** create `Neo4jGraphEvidenceAdapter` in `src/engram/services/as_of_evidence.py`
+  (or `as_of_evidence_neo4j.py` if >150 lines); reuse read paths from
+  `src/engram/storage/neo4j.py` (`query_knowledge_as_of` and fact queries).
+- **Behavior contract:** must pass the same leakage tests as `MemoryGraphEvidenceAdapter`
+  — parametrize `tests/unit/test_as_of_evidence.py` fixtures over both adapters
+  (memory in unit lane, Neo4j in `tests/integration/` behind the existing
+  integration marker).
+- **Done:** parametrized suite green on both adapters; excluded_counts parity
+  on the shared fixture graph; no future-recorded evidence in any dossier.
+
+### NS-2: Persist evidence dossiers in the ledger
+
+- **Files:** `JsonForecastRepository` gains `dossiers/` dir + `save_dossier`/
+  `load_dossier`/`list_dossiers` (same temp-file semantics; exclusive create like
+  runs — a dossier is immutable once a run cites it); `forecast-dossier-compile`
+  CLI gains `--repo` write-through; `ForecastRun.dossier_id` becomes a checked
+  reference at `save_run` (dangling → `ValueError`).
+- **Migration:** additive (new directory) — no `schema_version` bump; existing
+  ledgers remain valid. Rollback: ignore `dossiers/`.
+- **Tests:** `tests/unit/test_forecast_repository.py` — round-trip, immutability,
+  dangling `dossier_id` rejection; CLI test for write-through.
+- **Done:** a run's evidence is reconstructable from the ledger alone (no live
+  graph needed for audit), which unblocks the M7 audit command's spot checks.
+
+### NS-3: Prompt/model protocol versions for LLM-assisted forecasting
+
+- **Files:** `src/engram/services/forecast_protocol.py` — extract a
+  `ForecastProtocol` Protocol (create_run signature); add `LLMForecastProtocol`
+  with `protocol="llm.v1"`, prompt template in `config/prompts/forecast_llm.jinja2`,
+  provider via existing `engram.llm.provider`; `protocol_config` records
+  model name, prompt hash, temperature.
+- **Guardrails carried over:** branch-set guard, audit-mode dossier refusal, and
+  citation validation are shared via the base — test them against BOTH protocols
+  (parametrize existing protocol tests).
+- **Tests:** mocked-LLM determinism (existing `test_llm_provider.py` pattern);
+  malformed-LLM-output → explicit error, never a silent uniform fallback.
+- **Done:** `forecast-run-create --protocol llm.v1` produces a scoreable,
+  provenance-complete run; H4 re-ablation hook noted for prediction plan Phase 3.
+
+### NS-4: Real-estate diligence demo
+
+- **Files:** `examples/diligence-demo/` — timestamped evidence JSON (fixture-safe,
+  no confidential data; reuse M8 corpus fixtures when available), `run_demo.sh`
+  driving question→dossier→run→resolve→score with the canonical `forecast-*` CLI.
+- **Tests:** e2e smoke test in `tests/e2e/` (JSON evidence path — no Neo4j/Redis).
+- **Done:** demo runs green in CI; README links it as the kernel quickstart.
+
+### NS-5: Prequential belief updates
+
+- **Files:** `src/engram/models/forecasting.py` — `BeliefUpdate` (frozen,
+  `schema_version=1`: run_id refs prior/posterior, trigger evidence IDs,
+  update_at); repository `updates/` dir (exclusive create); scoring:
+  `forecast_scoring.py` gains prequential update-quality metrics (did updates
+  move probability toward the resolved branch — per-update log-score delta).
+- **Ordering:** requires NS-2 (dossier persistence) so update evidence is auditable.
+- **Tests:** update chain integrity (posterior run must exist, timestamps
+  monotonic); update-quality metric on a hand-computed fixture.
+- **Done:** `forecast-score-report` includes update-quality section when updates exist.
+
+### Deferred (explicitly out of this doc)
+
+- **API endpoints:** out of scope until Layer 2 closes, per master plan v2
+  "Cross-System Scope" (CLI + ledger only for MVP). When opened, endpoints land
+  under `/v1` with the auth rules in `2026-07-04-adoption-dx-execution.md` Phase E.
+- **Learned calibration / scenario trees / TKG forecasting:** owned by
+  `2026-07-04-prediction-upgrade-execution.md` (Phases 2–3); the kernel consumes
+  those as protocol implementations, not as kernel work.

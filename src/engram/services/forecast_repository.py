@@ -24,7 +24,15 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class JsonForecastRepository:
-    """Store forecast questions, runs, resolutions, and scores as JSON files."""
+    """Store forecast questions, runs, resolutions, and scores as JSON files.
+
+    Concurrency contract (MVP): the ledger is single-writer per directory for
+    questions, resolutions, and scores. Forecast run writes are race-safe: run
+    IDs are claimed with exclusive-create semantics (``os.link``), so concurrent
+    writers cannot silently overwrite an existing run — the loser gets
+    ``FileExistsError``. Multi-writer support for the other record types is a
+    post-MVP concern (see master plan v2 persistence rules).
+    """
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -41,6 +49,11 @@ class JsonForecastRepository:
             directory.mkdir(parents=True, exist_ok=True)
 
     def save_question(self, question: ForecastQuestion) -> None:
+        if question.status != QuestionStatus.DRAFT and not question.branches:
+            raise ValueError(
+                "non-draft questions in the JSON ledger require a non-empty "
+                "'branches' set (kernel shape); resolution matching depends on it"
+            )
         path = self._path(self.questions_dir, question.id)
         if path.exists():
             existing = self.load_question(question.id)
@@ -56,9 +69,7 @@ class JsonForecastRepository:
 
     def save_run(self, run: ForecastRun) -> None:
         path = self._path(self.runs_dir, run.id)
-        if path.exists():
-            raise FileExistsError(f"forecast run already exists: {run.id}")
-        self._atomic_write(path, run)
+        self._atomic_create(path, run)
 
     def load_run(self, run_id: str) -> ForecastRun:
         return self._load(self._path(self.runs_dir, run_id), ForecastRun)
@@ -113,6 +124,22 @@ class JsonForecastRepository:
         tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         tmp_path.write_text(record.model_dump_json(indent=2) + "\n", encoding="utf-8")
         os.replace(tmp_path, path)
+
+    @staticmethod
+    def _atomic_create(path: Path, record: BaseModel) -> None:
+        """Exclusive-create write: fails if path exists, race-safe across writers.
+
+        Writes to a temp file, then ``os.link`` claims the final name atomically.
+        Two concurrent writers cannot both succeed for the same ID.
+        """
+        tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        tmp_path.write_text(record.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        try:
+            os.link(tmp_path, path)
+        except FileExistsError:
+            raise FileExistsError(f"forecast run already exists: {path.stem}") from None
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
 
 class ForecastRepository:

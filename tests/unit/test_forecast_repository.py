@@ -54,6 +54,22 @@ def test_draft_question_can_be_updated_until_active(tmp_path):
     assert repository.load_question(question.id).status == QuestionStatus.ACTIVE
 
 
+def test_json_ledger_rejects_non_draft_question_without_branches(tmp_path):
+    """Graph-shape questions (allowed_branch_names only) cannot go active in the ledger."""
+    repository = JsonForecastRepository(tmp_path)
+    question = ForecastQuestion(
+        id="q-graph-shape",
+        forecast_as_of=NOW,
+        horizon="30d",
+        resolution_criteria="Milestone recorded.",
+        allowed_branch_names=["advance", "reprice"],
+        status=QuestionStatus.ACTIVE,
+    )
+
+    with pytest.raises(ValueError, match="non-empty 'branches'"):
+        repository.save_question(question)
+
+
 def test_save_load_and_list_run_refuses_duplicate_run_id(tmp_path):
     repository = JsonForecastRepository(tmp_path)
     question = _question()

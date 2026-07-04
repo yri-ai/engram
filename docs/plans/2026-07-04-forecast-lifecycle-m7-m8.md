@@ -6,42 +6,47 @@
 
 **Tech Stack:** Python 3.11+ | Pydantic v2 | Typer | pytest | existing `JsonForecastRepository` / `ForecastScorer` / `AsOfEvidenceCompiler`
 
-**Grounding:** `src/engram/models/forecasting.py` (contracts), `src/engram/services/forecast_repository.py` (`JsonForecastRepository:26`, graph `ForecastRepository:118`), `src/engram/services/forecast_scoring.py` (`ForecastScorer`, `build_calibration_report`), `src/engram/services/as_of_evidence.py`, CLI `forecast-*` commands (`cli/main.py:579–718`), fetcher pattern `scripts/data_collection/fetch_edgar_cmbs.py`.
+**Grounding:** `src/engram/models/forecasting.py` (contracts), `src/engram/services/forecast_repository.py` (`JsonForecastRepository:26`, graph `ForecastRepository:118`), `src/engram/services/forecast_scoring.py` (`ForecastScorer`, `build_calibration_report`), `src/engram/services/as_of_evidence.py`, CLI `forecast-*` commands (`src/engram/cli/main.py:579–718`), fetcher pattern `scripts/data_collection/fetch_edgar_cmbs.py`.
 
 ---
 
 ## M7 — Persistence Hardening + Decision Impact
 
 ### Task 0: Deprecate legacy CLI commands
-- Add deprecation warnings (stderr + docstring) to `create-forecast-question`, `run-forecast`, `resolve-forecast`, `score-forecasts` (`cli/main.py:741–1021`), pointing to the canonical `forecast-*` set. No behavior change.
+- Add deprecation warnings (stderr + docstring) to `create-forecast-question`, `run-forecast`, `resolve-forecast`, `score-forecasts` (`src/engram/cli/main.py:741–1021`), pointing to the canonical `forecast-*` set. No behavior change.
 - **Tests:** extend `tests/unit/test_cli.py` — legacy command emits warning, still functions; canonical commands emit none.
 
-### Task 1: `schema_version` + backend parity
-- Add `schema_version: int = 1` to every lifecycle model in `models/forecasting.py`; `JsonForecastRepository` validates on read (unknown version → explicit `SchemaVersionError`, not silent parse).
-- Migration scaffold: `engram forecast-ledger-migrate --from DIR --to DIR` — forward-only rewrite, verification diff (counts, IDs, recomputed scores equal), refuses in-place.
-- Parity: `export/import` round-trip between `JsonForecastRepository` and graph `ForecastRepository` — byte-equivalent artifacts modulo ordering.
-- **Tests:** `test_forecast_repository.py` additions — version validation, migrate round-trip, JSON↔graph parity on a 3-question fixture ledger.
+### Task 1: `schema_version`, dossier persistence, backend parity
+- Add `schema_version: int = 1` to exactly: `ForecastQuestion`, `EvidenceDossier`, `ForecastRun`, `ForecastResolution`, `ForecastScore`, `CalibrationSummary` (+ `DecisionRecord`/`BeliefUpdate` when created). Nested value objects (`OutcomeBranch`, `ResolutionCriteria`, `EvidenceItem`) are versioned by their parent. `JsonForecastRepository` validates on read (unknown version → explicit `SchemaVersionError`, not silent parse).
+- **Dossier persistence (prerequisite for Task 4 audit; = kernel plan NS-2):** `JsonForecastRepository` gains `dossiers/` dir + `save_dossier`/`load_dossier`/`list_dossiers` (exclusive create — immutable once a run cites one); `forecast-dossier-compile` writes through to `--repo`; `save_run` rejects a `dossier_id` not present in the ledger.
+- Migration scaffold: `engram forecast-ledger-migrate --from DIR --to DIR` — forward-only rewrite, verification diff (counts, IDs, recomputed scores equal), refuses in-place. Additive `dossiers/` dir needs no version bump.
+- Parity — **scoped:** graph `ForecastRepository` supports questions/runs/resolutions only; scores/dossiers/decisions are JSON-ledger-only (gap documented per release, per master plan v2). Parity test: normalized export (`model_dump(mode="json")`, sorted keys) of the supported subset round-trips JSON↔graph without semantic loss — field-normalized comparison, not byte equality.
+- **Tests:** `test_forecast_repository.py` additions — version validation, dossier round-trip/immutability, dangling `dossier_id` rejection, migrate round-trip, scoped JSON↔graph parity on a 3-question fixture ledger.
 
 ### Task 2: `DecisionRecord` model + repository support
-- `models/forecasting.py`: `DecisionRecord{schema_version, decision_id, decided_at, decision_type, forecast_run_ids: list[str] (≥1), rationale, expected_outcome_branch, realized_outcome_branch: str|None, impact_value: float|None, impact_kind: "avoided_loss"|"hit"|"miss"|None}`.
-- `JsonForecastRepository`: `decisions/*.json` (append-only by ID, same temp-file/rename semantics); referenced `forecast_run_ids` must exist at write time.
-- **Tests:** round-trip; dangling run reference rejected; immutability (rewrite same ID → error).
+- Modify `models/forecasting.py`: `DecisionRecord{schema_version, decision_id, decided_at, decision_type, primary_forecast_run_id: str, supporting_forecast_run_ids: list[str] = [], rationale, expected_outcome_branch, realized_outcome_branch: str|None, impact_value: float|None, impact_kind: "avoided_loss"|"hit"|"miss"|None}`.
+- **Hit-rate semantics (unambiguous):** all impact metrics are computed on `primary_forecast_run_id` only — one primary run → one question → at most one resolution, so conflicting resolved branches are structurally impossible. `supporting_forecast_run_ids` are provenance context, never scored. Validation: primary must not appear in supporting list; `expected_outcome_branch` must be a branch of the primary run's question.
+- **Resolution states for reporting:** a decision is *resolved* when its primary run's question has a `ForecastResolution`; unresolved decisions are excluded from the hit-rate denominator and reported as a separate `pending` count.
+- `JsonForecastRepository`: `decisions/*.json` (exclusive create by ID); all referenced run IDs must exist at write time.
+- **Tests:** round-trip; dangling primary/supporting reference rejected; primary-in-supporting rejected; expected-branch-not-in-question rejected; immutability; pending-vs-resolved classification.
 
 ### Task 3: Decision CLI + impact report
-- `forecast-decision-create` (links runs at decision time), `forecast-decision-resolve` (records realized outcome + impact value), `forecast-impact-report --repo DIR --baseline-window --measure-window`:
-  - decision hit-rate per window (decisions whose `expected_outcome_branch` == linked resolution branch),
+- `forecast-decision-create` (links primary + supporting runs at decision time), `forecast-decision-resolve` (records realized outcome + impact value), `forecast-impact-report --repo DIR --baseline-window --measure-window`:
+  - decision hit-rate per window over *resolved* decisions only (Task 2 semantics: `expected_outcome_branch` == the resolution branch of the primary run's question; pending decisions reported separately, never in the denominator),
   - aggregate `avoided_loss`,
   - baseline comparison per master plan Layer 3 contract (pre-forecast window vs measurement window),
   - refuses to report with <10 resolved decision records (mirrors low-sample behavior in `build_calibration_report`).
 - **Tests:** integration test builds ledger fixture → decisions → report matches hand-computed hit-rates; sample-floor refusal.
 
 ### Task 4: Lifecycle audit command (Layer 1 gate artifact)
+- **Depends on Task 1 dossier persistence.**
 - `forecast-audit-report --repo DIR [--spot-check N]`:
   - every question: `created_at` present and < resolution `resolved_at`; `forecast_as_of` ≤ `created_at` tolerance rule documented,
-  - every run: persisted, `forecast_as_of` set, all cited evidence IDs present in dossier,
-  - leakage spot check: recompile dossier via `AsOfEvidenceCompiler` at `forecast_as_of` for N sampled runs; cited evidence must be a subset of recompiled evidence (any extra citation = leakage flag),
+  - every run: persisted, `forecast_as_of` set, `dossier_id` resolves to a persisted dossier, all cited evidence IDs present in that dossier,
+  - **runs predating dossier persistence** (no ledger dossier): classified `unauditable_evidence` — reported, never counted as pass; Layer 1's "100%" criteria are computed over auditable runs and the unauditable count must be zero for the gate to close (i.e., old runs must be re-run or explicitly retired),
+  - leakage spot check: for N sampled runs *with a graph-backed evidence source*, recompile via `AsOfEvidenceCompiler` at `forecast_as_of`; cited evidence must be a subset of recompiled evidence (extra citation = leakage flag). For JSON-evidence-path runs, the check compares cited IDs against the persisted dossier's items and each item's `recorded_from ≤ forecast_as_of` (self-consistency check — weaker, labeled as such in the report),
   - output: JSON artifact + pass/fail summary; nonzero exit on failure (CI-usable).
-- **Tests:** clean fixture passes; three poisoned fixtures (missing resolution, post-cutoff citation, invalid timestamp) each fail with the right flag.
+- **Tests:** clean fixture passes; poisoned fixtures (missing resolution, post-cutoff citation, invalid timestamp, missing dossier) each fail with the right flag.
 
 ### Task 5: Metrics consolidation seam
 - Extract pure scoring functions from `forecast_scoring.py` into shared `src/engram/forecasting/metrics.py` if the prediction-upgrade plan's Phase 0 has landed; otherwise re-export from `forecast_scoring` and leave a tracked TODO. Either way: one Brier implementation in the codebase.
@@ -54,29 +59,47 @@
 ## M8 — Public Testing Corpus
 
 ### Task 1: Corpus schema + fixtures
-- `docs/corpus-schema.md` + Pydantic `PublicDeal{deal_id, source_kind, evidence_docs: [{doc_id, url, published_at, retrieved_at, text_ref}], milestones: [{at, kind, description}], resolved_branch, resolved_at}` in `src/engram/models/corpus.py`.
-- Two hand-built fixture deals in `tests/fixtures/corpus/` (one EDGAR REIT, one CourtListener) — small, licensed-clean text excerpts.
-- **Tests:** schema validation; chronology validator (every milestone/doc timestamp ordered, `resolved_at` after all pre-resolution evidence).
+- Create: `docs/corpus-schema.md`; Create: `src/engram/models/corpus.py` with Pydantic `PublicDeal{deal_id, source_kind, evidence_docs: [{doc_id, url, published_at, retrieved_at, text_ref, summary}], milestones: [{at, kind, description}], resolved_branch, resolved_at}`.
+- Create: two hand-built fixture deals in `tests/fixtures/corpus/` (one EDGAR REIT, one CourtListener) — small, licensed-clean text excerpts.
+- **Tests:** Create: `tests/unit/test_corpus_models.py` — schema validation; chronology validator (every milestone/doc timestamp ordered, `resolved_at` after all pre-resolution evidence).
 
 ### Task 2: Acquisition scripts
-- `scripts/data_collection/fetch_edgar_reit.py` and `fetch_courtlistener.py` (pattern: `fetch_edgar_cmbs.py`; manifests in `data/manifests/`; raw to `data/corpus/{edgar,courtlistener}/`). Rate-limit + retry per existing fetcher conventions; document API-key envs in `.env.example`.
+- Create: `scripts/data_collection/fetch_edgar_reit.py` and Create: `scripts/data_collection/fetch_courtlistener.py` (pattern: existing `fetch_edgar_cmbs.py`; manifests in `data/manifests/`; raw to `data/corpus/{edgar,courtlistener}/`). Rate-limit + retry per existing fetcher conventions; document API-key envs in `.env.example`.
 - **Tests:** parser golden-files on checked-in sample responses (no network in tests).
 
 ### Task 3: Corpus → lifecycle loader
-- `scripts/data_collection/build_corpus_questions.py`: for each `PublicDeal`, generate `ForecastQuestion` (branch set from milestone taxonomy, `forecast_as_of` set to a documented pre-resolution milestone), compile dossier from evidence docs with `published_at` as record time, write to a corpus ledger via `JsonForecastRepository`.
-- **Leakage rule:** loader refuses any evidence doc with `published_at > forecast_as_of` — reuses compiler semantics, tested with a poisoned deal.
-- **Tests:** fixture deals produce valid ledger; `forecast-audit-report` (M7 Task 4) passes on the generated ledger — this is the acceptance check.
+- Create: `scripts/data_collection/build_corpus_questions.py`: for each `PublicDeal`, generate `ForecastQuestion` (branch set from milestone taxonomy, `forecast_as_of` set to a documented pre-resolution milestone), compile a dossier, persist question + dossier to a corpus ledger via `JsonForecastRepository` (dossier persistence from M7 Task 1).
+- **`PublicDeal` → `EvidenceItem` field mapping (complete):**
+
+| EvidenceItem field | Source |
+|---|---|
+| `id` | `f"corpusdoc:{deal_id}:{doc_id}"` (deterministic) |
+| `text` | `evidence_docs[i].summary` (curated excerpt; `text_ref` retained in metadata for full text) |
+| `valid_from` | earliest milestone `at` the doc evidences, else `published_at` |
+| `valid_to` | `None` (public docs assert states, not closed intervals, at MVP) |
+| `recorded_from` | `published_at` (public knowledge time) |
+| `recorded_to` | `None` |
+| `source_id` | `doc_id` |
+| `source_span` | `text_ref` locator when available |
+| `supports_branch` / `opposes_branch` | from a per-deal curated annotation file (`tests/fixtures/corpus/{deal_id}.annotations.json`); loader runs without annotations but flags the dossier `unannotated` (protocol support counts are then zero — priors-only forecast) |
+| `supersession_status` | `"current_as_of"` (corpus docs don't supersede at MVP; amendments modeled as new docs) |
+| `supersedes_id` / `superseded_by_id` | `None` |
+| `confidence` | `None` |
+| `metadata` | `{deal_id, source_kind, url, retrieved_at, text_ref}` |
+
+- **Leakage rule:** loader refuses any evidence doc with `published_at > forecast_as_of` — tested with a poisoned deal.
+- **Tests:** fixture deals produce valid ledger (mapping asserted field-by-field on one doc); `forecast-audit-report` (M7 Task 4) passes on the generated ledger — this is the acceptance check.
 
 ### Task 4: Corpus acceptance gate
 - Target: 10–15 EDGAR REIT deals + 5–7 CourtListener deals loaded, audit-clean, ≥20 questions total (satisfies Layer 1 count on public data alone).
-- Artifact: `outputs/results/corpus_acceptance_v1.json` (deal counts, question counts, audit summary) + decision doc `docs/plans/decisions/corpus-acceptance-decision.md`.
+- Artifact (generated, does not exist yet): `outputs/results/corpus_acceptance_v1.json` (deal counts, question counts, audit summary) + Create: `docs/plans/decisions/corpus-acceptance-decision.md`.
 - **This gate opening is a precondition for M6 extraction-depth work** (master plan Task Ordering).
 
 ---
 
 ## Sequencing
 
-M7 Tasks 0–1 → 2 → 3 → 4 (5 anytime after 1). M8 Task 1 can start immediately; Task 3 depends on M7 Task 4 (audit) existing. Corpus acceptance (M8 Task 4) closes last.
+M7 Tasks 0–1 → 2 → 3 → 4 (5 anytime after 1; Task 4 additionally requires Task 1's dossier persistence). M8 Task 1 can start immediately; M8 Task 3 depends on M7 Task 1 (dossier persistence) and its acceptance check depends on M7 Task 4 (audit). Corpus acceptance (M8 Task 4) closes last.
 
 ## Standing Rules
 

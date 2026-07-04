@@ -179,10 +179,23 @@ class MemoryGraphEvidenceAdapter:
 
 
 class AsOfEvidenceCompiler:
-    """Compile graph records into an EvidenceDossier for a forecast question."""
+    """Compile graph records into an EvidenceDossier for a forecast question.
 
-    def __init__(self, adapter: GraphEvidenceAdapter) -> None:
+    Leakage rule: forecast-visible dossiers must contain no information recorded
+    after ``forecast_as_of`` — including supersession pointers to future
+    replacement facts. ``include_future_supersession_audit=True`` re-enables
+    those pointers for AUDIT tooling only; dossiers compiled in audit mode must
+    never be fed to a forecasting protocol.
+    """
+
+    def __init__(
+        self,
+        adapter: GraphEvidenceAdapter,
+        *,
+        include_future_supersession_audit: bool = False,
+    ) -> None:
         self.adapter = adapter
+        self.include_future_supersession_audit = include_future_supersession_audit
 
     async def compile(self, question: ForecastQuestion) -> EvidenceDossier:
         if question.target_id is None:
@@ -218,7 +231,10 @@ class AsOfEvidenceCompiler:
             evidence_items=evidence_items,
             excluded_counts=packet.excluded_counts,
             compiler="as_of_evidence.v1",
-            metadata={"target_id": question.target_id},
+            metadata={
+                "target_id": question.target_id,
+                **({"audit_mode": True} if self.include_future_supersession_audit else {}),
+            },
         )
 
     def _compile_fact_items(
@@ -247,7 +263,9 @@ class AsOfEvidenceCompiler:
             if known_replacement is not None:
                 supersession_status = "superseded_before_as_of"
                 superseded_by_id = _fact_item_id(known_replacement)
-            elif replacement is not None:
+            elif replacement is not None and self.include_future_supersession_audit:
+                # AUDIT MODE ONLY: exposes a replacement recorded after as_of.
+                # Never enabled on the forecast path (leakage).
                 supersession_status = "current_as_of_later_superseded"
                 superseded_by_id = _fact_item_id(replacement)
 

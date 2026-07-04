@@ -91,6 +91,11 @@ class ForecastQuestion(BaseModel):
 
     @model_validator(mode="after")
     def validate_branches(self) -> Self:
+        if not self.branches and not self.allowed_branch_names:
+            raise ValueError(
+                "forecast question requires a closed branch set: provide 'branches' "
+                "(temporal-kernel shape) or 'allowed_branch_names' (graph lifecycle shape)"
+            )
         if self.branches:
             branch_ids = [branch.id for branch in self.branches]
             if len(branch_ids) != len(set(branch_ids)):
@@ -136,7 +141,14 @@ class EvidenceDossier(BaseModel):
 
 
 class ForecastRun(BaseModel):
-    """Immutable record of a single forecast probability distribution."""
+    """Immutable record of a single forecast probability distribution.
+
+    Immutability contract: ``frozen=True`` blocks attribute reassignment but is
+    shallow — nested dicts/lists remain mutable in memory. The binding guarantee
+    is repository-level: the JSON ledger appends runs by ID with exclusive
+    create semantics and never rewrites them. Treat in-memory mutation of nested
+    fields as a bug; the persisted record is the source of truth.
+    """
 
     model_config = ConfigDict(frozen=True)
 

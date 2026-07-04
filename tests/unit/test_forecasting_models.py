@@ -68,6 +68,31 @@ def test_closed_branch_question_creation_with_priors():
     assert question.question_type == ForecastQuestionType.CLOSED_BRANCH
 
 
+def test_closed_branch_set_is_required():
+    """A question with neither branches nor allowed_branch_names is invalid."""
+    with pytest.raises(ValidationError, match="closed branch set"):
+        ForecastQuestion(
+            id="q-branchless",
+            title="Will this fail?",
+            question_type=ForecastQuestionType.BINARY,
+            forecast_as_of=NOW,
+            horizon="30d",
+            resolution_criteria=ResolutionCriteria(description="Observed later."),
+        )
+
+
+def test_graph_lifecycle_shape_accepts_allowed_branch_names_only():
+    question = ForecastQuestion(
+        id="q-graph-shape",
+        forecast_as_of=NOW,
+        horizon="30d",
+        resolution_criteria="Milestone recorded.",
+        allowed_branch_names=["advance", "reprice"],
+    )
+    assert question.branches == []
+    assert question.allowed_branch_names == ["advance", "reprice"]
+
+
 def test_forecast_as_of_is_required():
     with pytest.raises(ValidationError):
         ForecastQuestion(

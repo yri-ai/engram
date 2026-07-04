@@ -177,9 +177,40 @@ async def test_supersession_status_depends_on_replacement_record_time():
 
     assert items["fact:f-old"].supersession_status == "superseded_before_as_of"
     assert items["fact:f-old"].superseded_by_id == "fact:f-replacement-known"
+    # Leakage rule: a replacement recorded AFTER as_of must be invisible —
+    # no status hint, no pointer to the future fact.
+    assert items["fact:f-later-old"].supersession_status == "current_as_of"
+    assert items["fact:f-later-old"].superseded_by_id is None
+    assert "fact:f-replacement-later" not in items
+    # No item in a forecast-visible dossier may reference the future fact.
+    for item in dossier.evidence_items:
+        assert item.superseded_by_id != "fact:f-replacement-later"
+    assert "audit_mode" not in dossier.metadata
+
+
+async def test_audit_mode_exposes_future_supersession_and_is_flagged():
+    store = MemoryStore()
+    await store.initialize()
+    alice = _entity("alice", EntityType.PERSON)
+    await store.upsert_entity(alice)
+    await store.save_fact(_fact("f-later-old", alice.id, "Alice may downgrade."))
+    await store.save_fact(
+        _fact(
+            "f-replacement-later",
+            alice.id,
+            "Alice will not downgrade.",
+            recorded_from=AFTER,
+            supersedes_fact_id="f-later-old",
+        )
+    )
+
+    dossier = await _compile(store, target_id=alice.id, audit=True)
+    items = {item.id: item for item in dossier.evidence_items}
+
     assert items["fact:f-later-old"].supersession_status == "current_as_of_later_superseded"
     assert items["fact:f-later-old"].superseded_by_id == "fact:f-replacement-later"
-    assert "fact:f-replacement-later" not in items
+    # Audit dossiers are flagged so forecasting protocols can refuse them.
+    assert dossier.metadata.get("audit_mode") is True
 
 
 def _entity(name: str, entity_type: EntityType) -> Entity:
@@ -236,8 +267,11 @@ def _relationship(message_id: str, source_id: str, target_id: str, evidence: str
     )
 
 
-async def _compile(store: MemoryStore, *, target_id: str):
-    compiler = AsOfEvidenceCompiler(MemoryGraphEvidenceAdapter(store))
+async def _compile(store: MemoryStore, *, target_id: str, audit: bool = False):
+    compiler = AsOfEvidenceCompiler(
+        MemoryGraphEvidenceAdapter(store),
+        include_future_supersession_audit=audit,
+    )
     return await compiler.compile(_question(target_id=target_id))
 
 

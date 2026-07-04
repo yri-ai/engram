@@ -131,6 +131,39 @@ def test_question_and_dossier_must_match():
         DeterministicForecastProtocol().create_run(question, dossier, run_id="run-mismatch")
 
 
+def test_protocol_rejects_graph_lifecycle_questions_without_branches():
+    """Graph-shape questions (allowed_branch_names only) cannot be scored: no div-by-zero."""
+    question = ForecastQuestion(
+        id="q-graph-shape",
+        forecast_as_of=NOW,
+        horizon="30d",
+        resolution_criteria="Milestone recorded.",
+        allowed_branch_names=["advance", "reprice"],
+    )
+    dossier = EvidenceDossier(
+        id="dossier-q-graph-shape",
+        question_id="q-graph-shape",
+        forecast_as_of=NOW,
+    )
+
+    with pytest.raises(ValueError, match="non-empty 'branches'"):
+        DeterministicForecastProtocol().create_run(question, dossier, run_id="run-graph-shape")
+
+
+def test_protocol_rejects_audit_mode_dossiers():
+    """Dossiers compiled with future supersession audit metadata are not forecast input."""
+    question = _question([OutcomeBranch(id="yes", label="Yes"), OutcomeBranch(id="no", label="No")])
+    dossier = EvidenceDossier(
+        id=f"dossier-{question.id}",
+        question_id=question.id,
+        forecast_as_of=question.forecast_as_of,
+        metadata={"audit_mode": True},
+    )
+
+    with pytest.raises(ValueError, match="audit mode"):
+        DeterministicForecastProtocol().create_run(question, dossier, run_id="run-audit")
+
+
 def _question(branches: list[OutcomeBranch]) -> ForecastQuestion:
     return ForecastQuestion(
         id="q-protocol",
