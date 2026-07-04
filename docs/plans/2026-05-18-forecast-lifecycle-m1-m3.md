@@ -1,6 +1,6 @@
 # Forecast Lifecycle M1-M3 Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **STATUS: HISTORICAL — DO NOT EXECUTE (2026-07-04).** These milestones shipped via the temporal forecasting kernel: `src/engram/models/forecasting.py`, `src/engram/services/forecast_repository.py`, and the `forecast-*` CLI commands all exist on master. The "expected FAIL because module does not exist" steps below are stale. Current work is defined in `docs/plans/2026-05-18-forecast-lifecycle-master-plan.md` (v2) and `docs/plans/2026-07-04-forecast-lifecycle-m7-m8.md`. Kept for provenance only.
 
 **Goal:** Add lifecycle models, persistence, and CLI commands so forecasts are stored and resolvable rather than transient output.
 

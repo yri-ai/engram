@@ -1,6 +1,6 @@
 # Forecast Lifecycle M4-M6 Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **STATUS: HISTORICAL — DO NOT EXECUTE (2026-07-04).** M4–M5 shipped via the temporal forecasting kernel (`src/engram/services/forecast_scoring.py`, `src/engram/services/as_of_evidence.py`, `forecast-score-report` CLI). M6 (extraction depth) is NOT done and is now gated per the Task Ordering section of the master plan v2 — it must not be started from this document. Current work: `docs/plans/2026-05-18-forecast-lifecycle-master-plan.md` (v2) and `docs/plans/2026-07-04-forecast-lifecycle-m7-m8.md`. Kept for provenance only.
 
 **Goal:** Add scoring/calibration, enforce leakage-proof retrieval, and then improve extraction depth with measurable impact.
 
