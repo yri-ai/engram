@@ -5,7 +5,7 @@
 **Companion to:** `docs/plans/2026-07-04-prediction-upgrade-roadmap.md` (the "why" and research grounding)
 **This document:** the "how" — task-by-task, grounded in the current codebase.
 
-**Tech Stack:** Python 3.11+ | uv | pytest | Pydantic v2 | Neo4j | LiteLLM | numpy (+ optional extras created in Task 0.0)
+**Tech Stack:** Python 3.11+ | uv | pytest | Pydantic v2 | Neo4j | LiteLLM | numpy (+ optional extras created in Task 0.1)
 
 ---
 
@@ -38,9 +38,9 @@ forecast-graph = ["torch>=2.4", "torch-geometric>=2.6"]
 forecast-conformal = ["crepes>=0.7"]  # or MAPIE; decide in Task 5.1
 ```
 
-Install per phase: `uv sync --extra forecast` etc. CI runs core tests always, extras-gated tests behind markers (`@pytest.mark.forecast_tfm`, registered in `pyproject.toml` by Task 0.0).
+Install per phase: `uv sync --extra forecast` etc. CI runs core tests always, extras-gated tests behind markers (`@pytest.mark.forecast_tfm`, registered in `pyproject.toml` by Task 0.1).
 
-### Task 0.0: Project prerequisites, fixtures, and dependency gates
+### Task 0.1: Project prerequisites, fixtures, and dependency gates
 - Update `pyproject.toml` with optional dependency groups `forecast`, `forecast-tfm`, `forecast-graph`, and `forecast-conformal`, plus pytest markers `slow`, `forecast`, `forecast_tfm`, `forecast_graph`, and `forecast_conformal`.
 - Create a checked-in deterministic Track B fixture under `tests/fixtures/track_b/` with enough rows to exercise train/eval/holdout, rare transitions, and a future-recorded feature canary. This fixture is synthetic and small; it is not derived from ignored local `data/`.
 - Create a checked-in expected-baseline artifact for that fixture (Brier, top-1, class list) so Gate 6 can be verified without `outputs/track_b/events.ndjson`.
@@ -49,9 +49,9 @@ Install per phase: `uv sync --extra forecast` etc. CI runs core tests always, ex
 
 ---
 
-## Phase 0 — Evaluation Harness & Scoreboard (Tasks 0.0–0.6, ~2 weeks)
+## Phase 0 — Evaluation Harness & Scoreboard (Tasks 0.1–0.7, ~2 weeks)
 
-### Task 0.1: Forecaster protocol + package scaffold
+### Task 0.2: Forecaster protocol + package scaffold
 - Create `src/engram/forecasting/__init__.py`, `src/engram/forecasting/protocol.py`:
 
 ```python
@@ -64,34 +64,34 @@ class Forecaster(Protocol):
 - Adapter wrapping existing `BaselineForecaster`. The adapter must pad/renormalize probabilities to the full `DelinquencyBucket` enum because the current `BaselineForecaster.fit()` narrows classes to labels observed in training.
 - **Tests:** `tests/unit/test_forecasting_protocol.py` — adapter conforms; probabilities sum to 1; all `DelinquencyBucket` values are present even when the training set lacks rare buckets.
 
-### Task 0.2: Metrics module
+### Task 0.3: Metrics module
 - `src/engram/forecasting/metrics.py`: multiclass Brier (move logic out of `BaselineForecaster.backtest`), log-loss, top-1 accuracy, ECE (10-bin), reliability-curve data, one-vs-rest AUC per transition, and `loss_weighted_error` with a cost matrix (config-driven; default: cost ∝ bucket distance, `current→d90_plus` most expensive).
 - Pure numpy; no new deps.
 - **Tests:** `test_forecasting_metrics.py` — known-answer tests (hand-computed Brier/ECE on 3-row fixtures), degenerate cases (single class, empty).
 
-### Task 0.3: Walk-forward splitter + record-time replay
+### Task 0.4: Walk-forward splitter + record-time replay
 - `src/engram/forecasting/splits.py`:
   - `walk_forward_windows(rows, n_windows, step_months)` → list of (train, eval) row sets by `as_of`. It must copy rows before assigning split labels; do not call mutable `assign_splits()` on shared row objects across windows. Run `validate_no_leakage` on each copied window.
-  - `record_time_filter(rows, as_of)` — drop any feature or context item whose provenance has `recorded_from > as_of`. Add a canonical `feature_provenance` shape (`feature_name -> [{source_id, recorded_from}]`) used by all heads. Current Track B rows default `recorded_from = as_of`; the Task 0.0 synthetic fixture includes a poisoned future-recorded feature to prove the filter works before graph export exists.
+  - `record_time_filter(rows, as_of)` — drop any feature or context item whose provenance has `recorded_from > as_of`. Add a canonical `feature_provenance` shape (`feature_name -> [{source_id, recorded_from}]`) used by all heads. Current Track B rows default `recorded_from = as_of`; the Task 0.1 synthetic fixture includes a poisoned future-recorded feature to prove the filter works before graph export exists.
   - Origination-cohort splitter (by first-seen year) for vintage-shift evaluation.
 - **Tests:** `test_forecasting_splits.py` — window boundaries exact; source rows are not mutated; a row never appears in its own training window; cohort splits partition cleanly; future-recorded feature is removed while same-row `as_of` features remain.
 
-### Task 0.4: Leakage canary
+### Task 0.5: Leakage canary
 - `src/engram/forecasting/canary.py`: `run_leakage_canary(forecaster_factory, rows)` — clones the dataset, injects the *label* into a feature column, retrains; asserts score improves massively (canary detects that the harness *would* catch leakage), then runs the checked-in fixture and any optional local dataset with shuffled-future features and asserts score does **not** improve.
 - Wire into CI as `@pytest.mark.slow`.
 - **Tests:** canary flags a deliberately leaky forecaster fixture; passes the honest baseline.
 
-### Task 0.5: Baseline ladder
+### Task 0.6: Baseline ladder
 - `src/engram/forecasting/baselines.py`:
   - `HazardForecaster` — discrete-time multinomial logistic hazard (sklearn `LogisticRegression`, features from `extract_features_from_event_history`).
   - `GBMForecaster` — LightGBM multiclass with modest fixed hyperparameters + one tuned config (document the search).
 - Requires `--extra forecast`.
 - **Tests:** `test_forecasting_baselines.py` — both conform to protocol; beat uniform on synthetic data with known transition structure; deterministic under fixed seed.
 
-### Task 0.6: Harness runner + scoreboard artifact
+### Task 0.7: Harness runner + scoreboard artifact
 - `scripts/data_collection/run_forecast_harness.py`: runs N registered forecasters over walk-forward windows, emits `outputs/results/forecast_scoreboard_v{n}.json` (per-model, per-window, per-metric + calibration curves) and a markdown summary table.
 - Registry pattern: `--models baseline,hazard,gbm`.
-- **Gate 6 artifact:** scoreboard on the checked-in Task 0.0 synthetic fixture reproduces its committed baseline Brier within ±0.001; if local Ginnie `outputs/track_b/events.ndjson` exists, also compare against `outputs/results/track_b_forecast_v1.json`. Canary green is mandatory in both modes. Write `docs/plans/decisions/track-b-gate-6-decision.md`.
+- **Gate 6 artifact:** scoreboard on the checked-in Task 0.1 synthetic fixture reproduces its committed baseline Brier within ±0.001; if local Ginnie `outputs/track_b/events.ndjson` exists, also compare against `outputs/results/track_b_forecast_v1.json`. Canary green is mandatory in both modes. Write `docs/plans/decisions/track-b-gate-6-decision.md`.
 
 **Exit criteria Phase 0:** `uv run pytest tests/unit -q` green; scoreboard runs end-to-end on the checked-in fixture; optional local Ginnie run documented when data exists; GBM and hazard numbers on the board.
 
@@ -117,7 +117,7 @@ class Forecaster(Protocol):
 - **Tests:** student Brier within ε of teacher on held-out synthetic data.
 
 ### Task 1.5: Graph-feature ablation + Gate 7
-- Extend `track_b_graph_features.py` with the docstring's promised graph-derived features (entity degree, relationship-type counts, supersession counts for the loan's neighborhood) behind `graph_features(loan_id, as_of, driver)` — record-time filtered via Task 0.3 interface.
+- Extend `track_b_graph_features.py` with the docstring's promised graph-derived features (entity degree, relationship-type counts, supersession counts for the loan's neighborhood) behind `graph_features(loan_id, as_of, driver)` — record-time filtered via Task 0.4 interface.
 - Harness run: `{tfm, tfm+graph_features, gbm, gbm+graph_features}` × walk-forward.
 - **Gate 7 artifact + decision doc:** TFM beats tuned GBM on walk-forward Brier; graph features ≥3% relative Brier improvement. Kill/rescope rules as in roadmap §Phase 1.
 
@@ -248,7 +248,7 @@ Builds on `docs/plans/2026-04-01-branch-forecasting-v0.md` scaffolding and exist
 
 1. **TDD in repo style:** every task lands `tests/unit/test_*.py` first, `uv run pytest tests/unit -q` green before merge; `ruff` + `mypy` clean (existing configs).
 2. **No head without a scoreboard entry.** A model that isn't registered in the harness doesn't exist.
-3. **Record-time discipline:** any feature or context assembled for a prediction at `as_of` must pass through `record_time_filter` (Task 0.3). Code review checklist item.
+3. **Record-time discipline:** any feature or context assembled for a prediction at `as_of` must pass through `record_time_filter` (Task 0.4). Code review checklist item.
 4. **Gate decision docs** in `docs/plans/decisions/track-b-gate-{n}-decision.md`, same format as gates 1–5 (thresholds, observed, kill-condition check, direction change).
 5. **Artifacts** to `outputs/results/*.json`, versioned suffix, `generated_at` stamped (existing convention).
 6. **Cost tracking:** every LLM-touching component logs tokens + $ into its artifact. Gate 9/10 decisions require the cost column.
@@ -260,9 +260,9 @@ uv sync
 uv run pytest tests/unit -q                      # confirm green baseline
 uv run ruff check src tests scripts
 uv run mypy src
-# Task 0.0: optional deps, markers, checked-in fixture, expected baseline
+# Task 0.1: optional deps, markers, checked-in fixture, expected baseline
 uv run pytest tests/unit/test_forecasting_prerequisites.py -q
-# Task 0.1: protocol + adapter + tests after 0.0 is green
+# Task 0.2: protocol + adapter + tests after 0.1 is green
 uv run pytest tests/unit/test_forecasting_protocol.py -q
 ```
 

@@ -30,6 +30,23 @@ dev = [
     "mypy>=1.14.0",
     "pre-commit>=4.0.0",
 ]
+forecast = [
+    "scikit-learn>=1.5",
+    "lightgbm>=4.5",
+    "pandas>=2.2",
+]
+forecast-tfm = [
+    "tabpfn>=3.0",
+    "tabicl>=2.0",
+    "torch>=2.4",
+]
+forecast-graph = [
+    "torch>=2.4",
+    "torch-geometric>=2.6",
+]
+forecast-conformal = [
+    "crepes>=0.7",
+]
 
 [project.scripts]
 engram = "engram.cli.main:app"
@@ -59,6 +76,11 @@ asyncio_mode = "auto"
 addopts = "-v --tb=short"
 markers = [
     "integration: marks tests as integration tests (requires external services)",
+    "slow: marks tests as slow forecast or integration checks",
+    "forecast: marks tests for the core forecast harness",
+    "forecast_tfm: marks tests requiring tabular foundation model extras",
+    "forecast_graph: marks tests requiring graph forecast extras",
+    "forecast_conformal: marks tests requiring conformal forecast extras",
 ]
 
 [tool.mypy]
