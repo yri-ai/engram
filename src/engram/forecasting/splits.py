@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from copy import deepcopy
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from engram.services.track_b_dataset import validate_no_leakage
@@ -88,12 +88,23 @@ def origination_cohort_splits(rows: list[Row]) -> dict[str, list[Row]]:
 def _has_future_record(records: Any, as_of: str) -> bool:
     if not isinstance(records, list):
         return False
+    as_of_dt = _parse_record_time(as_of)
     return any(
         isinstance(record, dict)
         and isinstance(record.get("recorded_from"), str)
-        and record["recorded_from"] > as_of
+        and _parse_record_time(record["recorded_from"]) > as_of_dt
         for record in records
     )
+
+
+def _parse_record_time(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    if "T" not in normalized:
+        normalized = f"{normalized}T23:59:59+00:00"
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _add_months(value: date, months: int) -> date:

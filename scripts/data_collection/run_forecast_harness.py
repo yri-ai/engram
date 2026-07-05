@@ -7,7 +7,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from engram.forecasting.canary import run_leakage_canary
 from engram.forecasting.fixtures import load_forecast_fixture_rows
@@ -76,7 +76,27 @@ def build_forecaster(name: str) -> Forecaster:
         from engram.forecasting.baselines import GBMForecaster
 
         return GBMForecaster()
-    raise ValueError(f"unknown forecast model {name!r}; expected baseline,hazard,gbm")
+    if name == "tfm":
+        from engram.forecasting.tfm import TFMForecaster
+
+        return TFMForecaster()
+    if name == "ultra":
+        from engram.forecasting.graph_head import UltraForecaster
+
+        return UltraForecaster()
+    if name == "temporal_gnn":
+        from engram.forecasting.graph_head import TemporalGNNForecaster
+
+        return TemporalGNNForecaster()
+    if name == "ensemble":
+        from engram.forecasting.baselines import HazardForecaster
+        from engram.forecasting.ensemble import LinearPoolEnsemble
+        from engram.forecasting.tfm import TFMForecaster
+
+        return LinearPoolEnsemble([TFMForecaster(), HazardForecaster()])
+    raise ValueError(
+        f"unknown forecast model {name!r}; expected baseline,hazard,gbm,tfm,ultra,temporal_gnn,ensemble"
+    )
 
 
 def run_scoreboard(
@@ -185,7 +205,7 @@ def _run_harness_filter_canary(rows: list[dict[str, Any]]) -> dict[str, float | 
 
 
 def _inject_harness_future_label_feature(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    poisoned = json.loads(json.dumps(rows))
+    poisoned = cast("list[dict[str, Any]]", json.loads(json.dumps(rows)))
     for row in poisoned:
         row.setdefault("features", {})[_CANARY_FEATURE] = row["label"]["next_bucket"]
         row.setdefault("feature_provenance", {})[_CANARY_FEATURE] = [
@@ -210,7 +230,20 @@ class _FutureFeatureProbeForecaster:
 def _gate_6_status(
     model_results: list[dict[str, Any]], fixture_name: str | None, canary: dict[str, Any]
 ) -> dict[str, Any]:
-    baseline = next(result for result in model_results if result["model"] == "baseline")
+    baseline_result = next((result for result in model_results if result["model"] == "baseline"), None)
+    if baseline_result is None:
+        return {
+            "status": "FAIL",
+            "missing_required_model": "baseline",
+            "baseline_brier": None,
+            "expected_baseline_brier": None,
+            "baseline_brier_matches_expected": False,
+            "leakage_canary_passed": False,
+            "hazard_on_board": any(result["model"] == "hazard" for result in model_results),
+            "gbm_on_board": any(result["model"] == "gbm" for result in model_results),
+            "local_ginnie_events_present": Path("outputs/track_b/events.ndjson").exists(),
+        }
+    baseline = baseline_result
     baseline_brier = float(baseline["metrics"]["brier_score"])
     expected_brier: float | None = None
     matches_expected = fixture_name != "track_b_synthetic"
@@ -263,6 +296,8 @@ def _write_gate_6_decision(
 ) -> None:
     decision_path.parent.mkdir(parents=True, exist_ok=True)
     gate = scoreboard["gate_6"]
+    baseline_brier = gate["baseline_brier"]
+    baseline_brier_text = "None" if baseline_brier is None else f"{baseline_brier:.6f}"
     lines = [
         "# Track B Gate 6 Decision — Phase 0 Forecast Harness",
         "",
@@ -274,7 +309,7 @@ def _write_gate_6_decision(
         "- Baseline, hazard, and GBM models are present on the scoreboard.",
         "",
         "## Observed",
-        f"- Baseline Brier: `{gate['baseline_brier']:.6f}`",
+        f"- Baseline Brier: `{baseline_brier_text}`",
         f"- Expected baseline Brier: `{gate['expected_baseline_brier']}`",
         f"- Baseline Brier matches expected: `{gate['baseline_brier_matches_expected']}`",
         f"- Leakage canary: `{scoreboard['leakage_canary']['status']}`",
@@ -302,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--models",
         default="baseline,hazard,gbm",
-        help="Comma-separated registered models: baseline,hazard,gbm",
+        help="Comma-separated registered models: baseline,hazard,gbm,tfm,ultra,temporal_gnn,ensemble",
     )
     parser.add_argument("--output-dir", type=Path, default=_DEFAULT_OUTPUT_DIR)
     parser.add_argument("--decision-path", type=Path, default=_GATE_6_DECISION)
