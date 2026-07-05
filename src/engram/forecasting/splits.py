@@ -35,7 +35,9 @@ def walk_forward_windows(
         eval_start = unique_dates[eval_start_index]
         eval_end = _add_months(eval_start, step_months)
 
-        train_rows = [deepcopy(row) for row in rows if date.fromisoformat(row["as_of"]) < eval_start]
+        train_rows = [
+            deepcopy(row) for row in rows if date.fromisoformat(row["as_of"]) < eval_start
+        ]
         eval_rows = [
             deepcopy(row)
             for row in rows

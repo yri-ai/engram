@@ -36,7 +36,9 @@ class TFMForecaster:
         self.context_rows = sample_context(
             train_rows, self.context_budget, self.strategy, seed=self.seed
         )
-        self._counts = Counter(str(row.get("label", {}).get("next_bucket")) for row in self.context_rows)
+        self._counts = Counter(
+            str(row.get("label", {}).get("next_bucket")) for row in self.context_rows
+        )
         self._by_bucket = {}
         for row in self.context_rows:
             bucket = str(row.get("features", {}).get("bucket", ""))

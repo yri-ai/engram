@@ -13,7 +13,6 @@ class DistilledForecaster:
 
     name = "distilled_lookup"
 
-
     def __init__(self, default_distribution: dict[str, float]) -> None:
         self.default_distribution = default_distribution
         self._table: dict[str, dict[str, float]] = {}
@@ -29,7 +28,11 @@ class DistilledForecaster:
 
 
 def distill(
-    teacher: Forecaster, student: DistilledForecaster | None, rows: list[dict[str, Any]], *, temperature: float = 1.0
+    teacher: Forecaster,
+    student: DistilledForecaster | None,
+    rows: list[dict[str, Any]],
+    *,
+    temperature: float = 1.0,
 ) -> DistilledForecaster:
     """Fit a deterministic student on teacher probabilities."""
     del temperature

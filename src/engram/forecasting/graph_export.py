@@ -26,7 +26,8 @@ def filter_edges_as_of(edges: list[GraphEdge], as_of: str) -> list[GraphEdge]:
     return [
         edge
         for edge in edges
-        if _parse_record_time(edge.recorded_from) <= as_of_dt and _parse_record_time(edge.valid_from) <= as_of_dt
+        if _parse_record_time(edge.recorded_from) <= as_of_dt
+        and _parse_record_time(edge.valid_from) <= as_of_dt
     ]
 
 

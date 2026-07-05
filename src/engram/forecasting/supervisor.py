@@ -15,7 +15,10 @@ def reconcile_distributions(
         raise ValueError("weights must be non-negative")
     buckets = sorted({bucket for distribution in distributions for bucket in distribution})
     raw = {
-        bucket: sum(weight * distribution.get(bucket, 0.0) for weight, distribution in zip(active_weights, distributions, strict=True))
+        bucket: sum(
+            weight * distribution.get(bucket, 0.0)
+            for weight, distribution in zip(active_weights, distributions, strict=True)
+        )
         for bucket in buckets
     }
     total = sum(raw.values())

@@ -168,7 +168,9 @@ def loss_weighted_error(
 def _distance_cost_matrix(classes: Sequence[str]) -> dict[tuple[str, str], float]:
     indexes = {class_name: index for index, class_name in enumerate(classes)}
     distances = np.abs(
-        np.subtract.outer(np.arange(len(classes), dtype=float), np.arange(len(classes), dtype=float))
+        np.subtract.outer(
+            np.arange(len(classes), dtype=float), np.arange(len(classes), dtype=float)
+        )
     )
     return {
         (actual, predicted): float(distances[indexes[actual], indexes[predicted]])

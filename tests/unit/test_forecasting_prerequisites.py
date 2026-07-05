@@ -56,7 +56,15 @@ def test_track_b_synthetic_fixture_loader_produces_canonical_rows():
     }
 
     first = rows[0]
-    assert set(first) >= {"event_id", "message_id", "loan_id", "as_of", "split", "features", "label"}
+    assert set(first) >= {
+        "event_id",
+        "message_id",
+        "loan_id",
+        "as_of",
+        "split",
+        "features",
+        "label",
+    }
     assert first["label"]["horizon_months"] == 1
     assert first["features"]["bucket"] in {bucket.value for bucket in DelinquencyBucket}
 

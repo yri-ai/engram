@@ -91,7 +91,7 @@ warn_unused_configs = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["litellm.*", "neo4j.*"]
+module = ["litellm.*", "neo4j.*", "sklearn.*", "lightgbm.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

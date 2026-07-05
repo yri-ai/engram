@@ -73,7 +73,9 @@ class _TabularFeatureMixin:
         total = sum(counts.values())
         if total <= 0:
             return {bucket: 1.0 / len(_ALL_BUCKETS) for bucket in _ALL_BUCKETS}
-        return self._normalize_probabilities({bucket: counts.get(bucket, 0) / total for bucket in _ALL_BUCKETS})
+        return self._normalize_probabilities(
+            {bucket: counts.get(bucket, 0) / total for bucket in _ALL_BUCKETS}
+        )
 
 
 class HazardForecaster(_TabularFeatureMixin):
@@ -102,7 +104,11 @@ class HazardForecaster(_TabularFeatureMixin):
         self._class_labels = sorted(self._label_counts)
         label_to_index = {label: index for index, label in enumerate(self._class_labels)}
         y_train = np.asarray([label_to_index[str(label)] for label in labels], dtype=int)
-        from sklearn.linear_model import LogisticRegression  # type: ignore[import-untyped]
+        try:
+            from sklearn.linear_model import LogisticRegression
+        except ModuleNotFoundError:
+            self._model = None
+            return
 
         self._model = LogisticRegression(
             max_iter=self.max_iter,
@@ -161,7 +167,11 @@ class GBMForecaster(_TabularFeatureMixin):
         self._class_labels = sorted(self._label_counts)
         label_to_index = {label: index for index, label in enumerate(self._class_labels)}
         y_train = np.asarray([label_to_index[str(label)] for label in labels], dtype=int)
-        from lightgbm import LGBMClassifier
+        try:
+            from lightgbm import LGBMClassifier
+        except ModuleNotFoundError:
+            self._model = None
+            return
 
         self._model = LGBMClassifier(
             objective="multiclass",

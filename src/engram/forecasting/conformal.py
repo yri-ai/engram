@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 
 
-def conformal_threshold(calibration: list[tuple[dict[str, float], str]], alpha: float = 0.1) -> float:
+def conformal_threshold(
+    calibration: list[tuple[dict[str, float], str]], alpha: float = 0.1
+) -> float:
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha must be between 0 and 1")
     scores = sorted(1.0 - probs[label] for probs, label in calibration)

@@ -20,7 +20,9 @@ def assemble_evidence(
     excluded_future = 0
     for row in rows:
         row_as_of = str(row.get("as_of", ""))
-        if row.get("loan_id") != loan_id or _parse_record_time(row_as_of) > _parse_record_time(as_of):
+        if row.get("loan_id") != loan_id or _parse_record_time(row_as_of) > _parse_record_time(
+            as_of
+        ):
             continue
         filtered = record_time_filter(row, as_of)
         if filtered != row:

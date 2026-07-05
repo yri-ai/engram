@@ -29,7 +29,10 @@ class UltraForecaster:
             return {bucket: value / total for bucket, value in sharpened.items()}
         loan_id = str(features.get("loan_id", ""))
         graph_votes = Counter(edge["tail"] for edge in self.edges if edge.get("head") == loan_id)
-        raw = {bucket: self._counts.get(bucket, 0) + graph_votes.get(bucket, 0) + 1 for bucket in _CLASSES}
+        raw = {
+            bucket: self._counts.get(bucket, 0) + graph_votes.get(bucket, 0) + 1
+            for bucket in _CLASSES
+        }
         total = sum(raw.values())
         return {bucket: value / total for bucket, value in raw.items()}
 

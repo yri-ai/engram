@@ -21,7 +21,10 @@ def test_rows_to_matrix_round_trip_unknown_category_and_nan(tmp_path):
     path = tmp_path / "features.json"
     config.save(path)
     loaded = FeatureConfig.load(path)
-    new_row = {"features": {"bucket": "brand_new", "credit_score": None}, "label": {"next_bucket": "current"}}
+    new_row = {
+        "features": {"bucket": "brand_new", "credit_score": None},
+        "label": {"next_bucket": "current"},
+    }
     x_eval, _, eval_names, _ = rows_to_matrix([new_row], loaded)
     assert eval_names == names
     assert np.isnan(x_eval[0][loaded.numeric_features.index("credit_score")])
@@ -44,4 +47,6 @@ def test_tfm_forecaster_conforms_and_distills_teacher_predictions():
     assert abs(sum(probs.values()) - 1.0) < 1e-9
 
     student = distill(forecaster, None, rows[:8])
-    assert student.predict_proba(rows[0]["features"]) == forecaster.predict_proba(rows[0]["features"])
+    assert student.predict_proba(rows[0]["features"]) == forecaster.predict_proba(
+        rows[0]["features"]
+    )

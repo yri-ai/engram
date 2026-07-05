@@ -93,8 +93,14 @@ def graph_features(loan_id: str, as_of: str, driver: Any) -> dict[str, Any]:
     """
     edges = getattr(driver, "edges", []) if driver is not None else []
     as_of_dt = _parse_record_time(as_of)
-    visible = [edge for edge in edges if _parse_record_time(str(edge.get("recorded_from", "9999-12-31"))) <= as_of_dt]
-    neighborhood = [edge for edge in visible if edge.get("head") == loan_id or edge.get("tail") == loan_id]
+    visible = [
+        edge
+        for edge in edges
+        if _parse_record_time(str(edge.get("recorded_from", "9999-12-31"))) <= as_of_dt
+    ]
+    neighborhood = [
+        edge for edge in visible if edge.get("head") == loan_id or edge.get("tail") == loan_id
+    ]
     rel_counts: dict[str, int] = {}
     supersession_count = 0
     entities: set[str] = set()

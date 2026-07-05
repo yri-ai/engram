@@ -24,7 +24,8 @@ class DealRepository:
     def latest_as_of(self, deal_id: str, as_of: str) -> DealSpec | None:
         as_of_dt = _parse_as_of(as_of)
         candidates = [
-            spec for spec in self.specs.values()
+            spec
+            for spec in self.specs.values()
             if spec.deal_id == deal_id
             and _as_aware(spec.recorded_from) <= as_of_dt
             and _as_aware(spec.valid_from) <= as_of_dt

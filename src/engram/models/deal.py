@@ -26,7 +26,19 @@ class Trigger(BaseModel):
     @classmethod
     def _safe_formula(cls, value: str) -> str:
         tree = ast.parse(value, mode="eval")
-        allowed = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Name, ast.Load, ast.Constant, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub)
+        allowed = (
+            ast.Expression,
+            ast.BinOp,
+            ast.UnaryOp,
+            ast.Name,
+            ast.Load,
+            ast.Constant,
+            ast.Add,
+            ast.Sub,
+            ast.Mult,
+            ast.Div,
+            ast.USub,
+        )
         if any(not isinstance(node, allowed) for node in ast.walk(tree)):
             raise ValueError("formula must use the restricted expression language")
         return value

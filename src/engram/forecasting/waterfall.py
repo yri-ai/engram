@@ -21,7 +21,9 @@ class DealOutcome:
 def simulate(deal_spec: DealSpec, collateral_cashflows: list[float]) -> DealOutcome:
     deal_spec.require_verified()
     balances = {tranche.tranche_id: tranche.balance for tranche in deal_spec.tranches}
-    tranche_cashflows: dict[str, list[float]] = {tranche.tranche_id: [] for tranche in deal_spec.tranches}
+    tranche_cashflows: dict[str, list[float]] = {
+        tranche.tranche_id: [] for tranche in deal_spec.tranches
+    }
     retained: list[float] = []
     ordered = sorted(deal_spec.tranches, key=lambda tranche: tranche.seniority)
     for inflow in collateral_cashflows:
@@ -36,7 +38,9 @@ def simulate(deal_spec: DealSpec, collateral_cashflows: list[float]) -> DealOutc
                 if step.rule == "residual":
                     pay = remaining
                 elif step.rule == "interest":
-                    pay = min(remaining, balances[tranche_id] * _coupon_for(deal_spec, tranche_id) / 12.0)
+                    pay = min(
+                        remaining, balances[tranche_id] * _coupon_for(deal_spec, tranche_id) / 12.0
+                    )
                 else:
                     pay = min(remaining, balances[tranche_id])
                     balances[tranche_id] -= pay
@@ -52,7 +56,9 @@ def simulate(deal_spec: DealSpec, collateral_cashflows: list[float]) -> DealOutc
             tranche_cashflows[tranche.tranche_id].append(period_payments[tranche.tranche_id])
         retained.append(remaining)
     trigger_states = {
-        trigger.trigger_id: _evaluate_trigger_breach(trigger.formula, trigger.threshold, collateral_cashflows, deal_spec)
+        trigger.trigger_id: _evaluate_trigger_breach(
+            trigger.formula, trigger.threshold, collateral_cashflows, deal_spec
+        )
         for trigger in deal_spec.triggers
     }
     return DealOutcome(

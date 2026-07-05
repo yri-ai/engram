@@ -24,13 +24,7 @@ def load_forecast_fixture_rows(name: str) -> list[dict[str, Any]]:
         known = ", ".join(sorted(_FIXTURE_FILES))
         raise ValueError(f"unknown forecast fixture {name!r}; known fixtures: {known}") from exc
 
-    fixture = (
-        Path(__file__).resolve().parents[3]
-        / "tests"
-        / "fixtures"
-        / "track_b"
-        / file_name
-    )
+    fixture = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "track_b" / file_name
 
     rows = [json.loads(line) for line in fixture.read_text().splitlines() if line.strip()]
     return deepcopy(rows)

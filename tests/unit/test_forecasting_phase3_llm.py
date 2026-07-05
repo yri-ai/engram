@@ -13,11 +13,21 @@ from engram.forecasting.supervisor import reconcile_distributions
 def test_branch_contracts_and_budgeted_rollout_are_deterministic():
     branches = enumerate_bucket_branches(horizon_months=2)
     assert branches[0].horizon_months == 2
-    BranchForecast(branch=branches[0], probability=0.5, evidence_refs=["m1"], flip_conditions=["more delinquency evidence"])
+    BranchForecast(
+        branch=branches[0],
+        probability=0.5,
+        evidence_refs=["m1"],
+        flip_conditions=["more delinquency evidence"],
+    )
     ScenarioNode(node_id="root", children=[ScenarioNode(node_id="child", probability=0.2)])
 
-    forecaster = LLMBranchForecaster(ComputeBudget(n_particles=2, max_depth=1, tokens_per_particle=10))
-    result = forecaster.rollout("loan stress", scorer=lambda prompt, branch: 2.0 if branch.target_bucket.value == "d30" else 1.0)
+    forecaster = LLMBranchForecaster(
+        ComputeBudget(n_particles=2, max_depth=1, tokens_per_particle=10)
+    )
+    result = forecaster.rollout(
+        "loan stress",
+        scorer=lambda prompt, branch: 2.0 if branch.target_bucket.value == "d30" else 1.0,
+    )
     assert result["cost"] == {"tokens": 20, "usd": 0.000019999999999999998}
     assert result["probabilities"]["d30"] > result["probabilities"]["current"]
 
@@ -28,7 +38,9 @@ def test_evidence_assembly_filters_future_recorded_context():
     poisoned = dict(rows[0])
     poisoned["message_id"] = "future-msg"
     poisoned["features"] = {**rows[0]["features"], "future_signal": "motif"}
-    poisoned["feature_provenance"] = {"future_signal": [{"source_id": "x", "recorded_from": "9999-01-01"}]}
+    poisoned["feature_provenance"] = {
+        "future_signal": [{"source_id": "x", "recorded_from": "9999-01-01"}]
+    }
     evidence = assemble_evidence(loan_id, rows[0]["as_of"], 5, [], rows=[poisoned, *rows])
     assert "future_signal" not in evidence["items"][0]["features"]
     assert evidence["excluded_counts"]["future_record_time"] == 1

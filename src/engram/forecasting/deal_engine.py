@@ -11,7 +11,9 @@ if TYPE_CHECKING:
     from engram.models.deal import DealSpec
 
 
-def predict_deal(deal_spec: DealSpec, as_of: str, n_paths: int, compute_budget: int) -> dict[str, object]:
+def predict_deal(
+    deal_spec: DealSpec, as_of: str, n_paths: int, compute_budget: int
+) -> dict[str, object]:
     del as_of, compute_budget
     paths = sample_collateral_paths([100.0, 90.0, 80.0], n_paths)
     losses = 0
@@ -24,4 +26,8 @@ def predict_deal(deal_spec: DealSpec, as_of: str, n_paths: int, compute_budget: 
         severe_shortfall = collateral_available < (principal_balance * 0.25)
         losses += int(severe_shortfall)
     denom = max(n_paths, 1)
-    return {"p_trigger_breach": breaches / denom, "p_tranche_loss": losses / denom, "expected_waterfall_path": paths[0] if paths else []}
+    return {
+        "p_trigger_breach": breaches / denom,
+        "p_tranche_loss": losses / denom,
+        "expected_waterfall_path": paths[0] if paths else [],
+    }

@@ -15,7 +15,9 @@ from engram.forecasting.output import PredictionReport
 def test_conformal_prediction_sets_and_timing_bands():
     calibration = [({"current": 0.9, "d30": 0.1}, "current"), ({"current": 0.2, "d30": 0.8}, "d30")]
     threshold = conformal_threshold(calibration, alpha=0.1)
-    weighted = weighted_conformal_threshold([(calibration[0][0], calibration[0][1], 2.0)], alpha=0.1)
+    weighted = weighted_conformal_threshold(
+        [(calibration[0][0], calibration[0][1], 2.0)], alpha=0.1
+    )
     assert threshold <= 0.2
     assert weighted <= 0.2
     assert prediction_set({"current": 0.95, "d30": 0.05}, threshold) == ["current"]

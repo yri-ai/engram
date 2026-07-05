@@ -35,4 +35,6 @@ class ScenarioNode(BaseModel):
 
 
 def enumerate_bucket_branches(horizon_months: int = 1) -> list[Branch]:
-    return [Branch(target_bucket=bucket, horizon_months=horizon_months) for bucket in DelinquencyBucket]
+    return [
+        Branch(target_bucket=bucket, horizon_months=horizon_months) for bucket in DelinquencyBucket
+    ]

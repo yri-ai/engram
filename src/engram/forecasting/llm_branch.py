@@ -36,4 +36,7 @@ class LLMBranchForecaster:
         total = sum(weights.values()) or 1.0
         probabilities = {key: value / total for key, value in weights.items()}
         tokens = self.compute_budget.n_particles * self.compute_budget.tokens_per_particle
-        return {"probabilities": probabilities, "cost": {"tokens": tokens, "usd": tokens * 0.000001}}
+        return {
+            "probabilities": probabilities,
+            "cost": {"tokens": tokens, "usd": tokens * 0.000001},
+        }
