@@ -1,0 +1,38 @@
+{
+  "deal_id": "store-gic-oakstreet-2023",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.businesswire.com/news/home/20230202005925/en/GIC-and-Oak-Street-Complete-$15-Billion-Acquisition-of-STORE-Capital",
+      "published_at": "2023-02-03T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "STORE Capital / GIC Oak Street acquisition",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.businesswire.com/news/home/20230202005925/en/GIC-and-Oak-Street-Complete-$15-Billion-Acquisition-of-STORE-Capital",
+      "published_at": "2023-02-03T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "STORE Capital / GIC Oak Street acquisition",
+      "summary": "GIC and Oak Street completed their acquisition of STORE Capital.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2023-02-03T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "STORE Capital / GIC Oak Street acquisition"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

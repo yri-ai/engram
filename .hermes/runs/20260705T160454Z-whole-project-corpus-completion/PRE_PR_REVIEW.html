@@ -1,0 +1,293 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Pre-PR Review</title></head><body>
+<div class="report-metadata" data-report="PRE_PR_REVIEW" data-status="PASS" data-updated-at="2026-07-05T18:33:42.527072+00:00"></div>
+<h1>Pre-PR Review</h1>
+<p>Status: <strong>PASS</strong></p>
+<p>Final bug-bot-local/opencode pre-PR review found 0 high and 0 medium verified issues.</p>
+<pre>Path, record: BaseModel) -&gt; None:
++    def _atomic_create(path: Path, record: BaseModel, *, exists_message: str) -&gt; None:
+         &quot;&quot;&quot;Exclusive-create write: fails if path exists, race-safe across writers.
+
+         Writes to a temp file, then ``os.link`` claims the final name atomically.
+         Two concurrent writers cannot both succeed for the same ID.
+         &quot;&quot;&quot;
+         tmp_path = path.with_name(f&quot;.{path.name}.{os.getpid()}.tmp&quot;)
+         tmp_path.write_text(record.model_dump_json(indent=2) + &quot;\n&quot;, encoding=&quot;utf-8&quot;)
+         try:
+             os.link(tmp_path, path)
+         except FileExistsError:
+-            raise FileExistsError(f&quot;forecast run already exists: {path.stem}&quot;) from None
++            raise FileExistsError(f&quot;{exists_message}: {path.stem}&quot;) from None
+         finally:
+             tmp_path.unlink(missing_ok=True)
+
+
++def migrate_json_forecast_ledger(from_dir: str | Path, to_dir: str | Path) -&gt; dict[str, list[str]]:
++    &quot;&quot;&quot;Forward-copy a JSON forecast ledger and verify stable semantic equality.&quot;&quot;&quot;
++
++    source_path = Path(from_dir).resolve()
++    target_path = Path(to_dir).resolve()
++    if source_path == target_path:
++        raise ValueError(&quot;in-place migration is not allowed&quot;)
++    if target_path.exists() and any(target_path.iterdir()):
++        raise ValueError(&quot;migration target must be empty or absent&quot;)
++
++    source = JsonForecastRepository(source_path)
++    if target_path.exists():
++        shutil.rmtree(target_path)
++    target = JsonForecastRepository(target_path)
++
++    for question in source.list_questions():
++        target.save_question(question)
++    for dossier in source.list_dossiers():
++        target.save_dossier(dossier)
++    for run in source.list_runs():
++        # Migration must preserve pre-M7 runs whose dossier files were not yet
++        # ledger-persisted. New writes are guarded by save_run(); migration is a
++        # forward rewrite of historical artifacts and audit will classify those
++        # old runs as unauditable until rerun or retired.
++        target._atomic_create(  # noqa: SLF001
++            target._path(target.runs_dir, run.id),  # noqa: SLF001
++            run,
++            exists_message=&quot;forecast run already exists&quot;,
++        )
++    for resolution in source.list_resolutions():
++        target.save_resolution(resolution)
++    for update in source.list_updates():
++        target.save_update(update)
++    for score in source.list_scores():
++        target.save_score(score)
++
++    summary = {
++        &quot;questions&quot;: _verify_records(source.list_questions(), target.list_questions()),
++        &quot;dossiers&quot;: _verify_records(source.list_dossiers(), target.list_dossiers()),
++        &quot;runs&quot;: _verify_records(source.list_runs(), target.list_runs()),
++        &quot;resolutions&quot;: _verify_records(source.list_resolutions(), target.list_resolutions()),
++        &quot;updates&quot;: _verify_records(source.list_updates(), target.list_updates()),
++        &quot;scores&quot;: _verify_records(
++            source.list_scores(), target.list_scores(), normalize_fields={&quot;scored_at&quot;}
++        ),
++    }
++    return summary
++
++
++def _verify_records(
++    source_records: Sequence[BaseModel],
++    target_records: Sequence[BaseModel],
++    *,
++    normalize_fields: set[str] | None = None,
++) -&gt; list[str]:
++    source_payloads = [_normalized_record(record, normalize_fields or set()) for record in source_records]
++    target_payloads = [_normalized_record(record, normalize_fields or set()) for record in target_records]
++    if source_payloads != target_payloads:
++        raise ValueError(&quot;migration verification failed&quot;)
++    return [str(payload.get(&quot;id&quot;)) for payload in source_payloads]
++
++
++def _normalized_record(record: BaseModel, normalize_fields: set[str]) -&gt; dict[str, Any]:
++    payload = record.model_dump(mode=&quot;json&quot;)
++    for field in normalize_fields:
++        payload.pop(field, None)
++    return dict(sorted(payload.items()))
++
++
+ class ForecastRepository:
+     &quot;&quot;&quot;Persist forecast lifecycle models using graph facts.&quot;&quot;&quot;
+
+     QUESTION_FACT_KEY = &quot;forecast.question&quot;
+     RUN_FACT_KEY = &quot;forecast.run&quot;
+     RESOLUTION_FACT_KEY = &quot;forecast.resolution&quot;
+
+     def __init__(
+         self,
+         store: GraphStore,
+         *,
+         tenant_id: str,
+         conversation_id: str,
+         message_id: str,
+     ) -&gt; None:
+         self._store = store
+         self._tenant_id = tenant_id
+         self._conversation_id = conversation_id
+         self._message_id = message_id
+
+diff --git a/src/engram/services/forecast_scoring.py b/src/engram/services/forecast_scoring.py
+index 24690f0..75bdeac 100644
+--- a/src/engram/services/forecast_scoring.py
++++ b/src/engram/services/forecast_scoring.py
+@@ -1,63 +1,66 @@
+ &quot;&quot;&quot;Scoring utilities for resolved forecast runs.&quot;&quot;&quot;
+
+ from __future__ import annotations
+
+ import math
+ from collections import defaultdict
+ from datetime import UTC, datetime
+ from typing import Protocol, TypedDict
+
+ from engram.models.forecasting import (
++    BeliefUpdate,
+     CalibrationSummary,
+     ForecastResolution,
+     ForecastRun,
+     ForecastScore,
+ )
+
+
+ class ScoredQuestionRow(TypedDict):
+     question_id: str
+     run_id: str
+     target_entity_id: str | None
+     forecast_as_of: str
+     top_branch: str
+     outcome_branch: str
+     resolution_source: str
+     selected_evidence_ids: list[str]
+     extraction_variant: str
+     brier_score: float
+     top_1_correct: bool
+     calibration_bucket: str
+     expected_calibration_error: float
+     sample_count: int
+
+
+ class ForecastScoringRepository(Protocol):
+     &quot;&quot;&quot;Repository surface needed to score stored forecast runs.&quot;&quot;&quot;
+
+     def list_runs(self) -&gt; list[ForecastRun]: ...
+
+     def list_resolutions(self) -&gt; list[ForecastResolution]: ...
+
+     def save_score(self, score: ForecastScore) -&gt; None: ...
+
++    def list_updates(self) -&gt; list[BeliefUpdate]: ...
++
+
+ class ForecastScorer:
+     &quot;&quot;&quot;Compute per-question and aggregate forecast metrics.&quot;&quot;&quot;
+
+     def score_runs(
+         self,
+         runs: list[ForecastRun],
+         resolutions: list[ForecastResolution],
+         *,
+         bins: int = 10,
+     ) -&gt; dict[str, object]:
+         resolution_by_run_id = {
+             resolution.run_id: resolution
+             for resolution in resolutions
+             if resolution.run_id is not None
+         }
+         scores: list[ForecastScore] = []
+         per_question: list[ScoredQuestionRow] = []
+
+         for run in runs:
+@@ -315,44 +318,76 @@ def build_calibration_report(
+
+         score = score_forecast_run(run, resolution, top_k=top_k, bucket_count=bucket_count)
+         scores.append(score)
+         if persist_scores:
+             repository.save_score(score)
+
+     buckets = _build_buckets(scores, bucket_count)
+     run_count = len(scores)
+     return CalibrationSummary(
+         id=f&quot;calibration-{datetime.now(UTC).strftime(&#x27;%Y%m%d%H%M%S&#x27;)}&quot;,
+         run_count=run_count,
+         mean_brier_score=_mean([score.brier_score for score in scores]),
+         mean_log_score=_mean([score.log_score or 0.0 for score in scores]),
+         bucket_count=bucket_count,
+         buckets=buckets,
+         low_sample_warning=run_count &lt; low_sample_threshold,
+         metadata={
+             &quot;scored_run_ids&quot;: [score.run_id for score in scores],
+             &quot;skipped_run_count&quot;: len(skipped_run_ids),
+             &quot;skipped_run_ids&quot;: skipped_run_ids,
++            &quot;update_quality&quot;: build_update_quality_report(repository),
+         },
+     )
+
+
++def build_update_quality_report(repository: ForecastScoringRepository) -&gt; dict[str, object]:
++    &quot;&quot;&quot;Report prequential update quality via log-score delta toward resolution.&quot;&quot;&quot;
++
++    runs_by_id = {run.id: run for run in repository.list_runs()}
++    resolutions_by_question = _resolutions_by_question_id(repository.list_resolutions())
++    rows: list[dict[str, object]] = []
++    for update in repository.list_updates():
++        prior = runs_by_id[update.prior_run_id]
++        posterior = runs_by_id[update.posterior_run_id]
++        resolution = resolutions_by_question.get(prior.question_id)
++        if resolution is None:
++            continue
++        branch = _resolution_branch(resolution)
++        prior_log = log_score(probability_assigned_to_resolved_branch(prior, branch))
++        posterior_log = log_score(probability_assigned_to_resolved_branch(posterior, branch))
++        rows.append({
++            &quot;update_id&quot;: update.update_id,
++            &quot;prior_run_id&quot;: prior.id,
++            &quot;posterior_run_id&quot;: posterior.id,
++            &quot;resolved_branch&quot;: branch,
++            &quot;log_score_delta&quot;: prior_log - posterior_log,
++            &quot;improved&quot;: posterior_log &lt; prior_log,
++        })
++    return {
++        &quot;update_count&quot;: len(rows),
++        &quot;improved_count&quot;: sum(1 for row in rows if row[&quot;improved&quot;]),
++        &quot;mean_log_score_delta&quot;: _mean([float(row[&quot;log_score_delta&quot;]) for row in rows if isinstance(row[&quot;log_score_delta&quot;], int | float)]),
++        &quot;updates&quot;: rows,
++    }
++
++
+ def _run_probabilities(run: ForecastRun) -&gt; dict[str, float]:
+     return run.probabilities or run.branch_probabilities
+
+
+ def _resolution_branch(resolution: ForecastResolution) -&gt; str:
+     branch = resolution.resolved_branch or resolution.outcome_branch
+     if branch is None:
+         raise ValueError(&quot;resolution branch is required&quot;)
+     return branch
+
+
+ def _ranked_branch_ids(run: ForecastRun) -&gt; list[str]:
+     probabilities = _run_probabilities(run)
+     return sorted(probabilities, key=lambda branch_id: (-probabilities[branch_id], branch_id))
+
+
+ def _validate_probability(probability: float) -&gt; None:
+     if not 0.0 &lt;= probability &lt;= 1.0:
+         raise ValueError(&quot;probability must be between 0 and 1&quot;)
+[0m
+[0m✱ [0mGrep &quot;build_calibration_report\(&quot;[90m in . · 11 matches[0m
+[0m✱ [0mGrep &quot;ForecastScoringRepository|score_runs\(&quot;[90m in . · 8 matches[0m
+[0m✱ [0mGrep &quot;list_updates\(&quot;[90m in . · 6 matches[0m
+I found no verified HIGH/MEDIUM issue in the executable paths reviewed. I’m checking whether the claimed verification still passes locally before finalizing the status.
+[0m
+[0m$ [0muv run pytest -q tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py tests/unit/test_forecast_scoring.py tests/unit/test_corpus_pipeline.py tests/unit/test_cli.py tests/e2e/test_diligence_demo.py
+warning: `VIRTUAL_ENV=/home/leo/.hermes/hermes-agent/venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.2, pluggy-1.6.0
+rootdir: /home/leo/dev/projects/engram/.worktree/forecast-lifecycle-m7-m8
+configfile: pyproject.toml
+plugins: anyio-4.12.1, cov-7.0.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 86 items
+
+tests/unit/test_forecast_repository.py ................................  [ 37%]
+tests/unit/test_forecast_protocol.py .............                       [ 52%]
+tests/unit/test_forecast_scoring.py ................                     [ 70%]
+tests/unit/test_corpus_pipeline.py ....                                  [ 75%]
+tests/unit/test_cli.py ....................                              [ 98%]
+tests/e2e/test_diligence_demo.py .                                       [100%]
+
+============================= 86 passed in 19.32s ==============================
+[0m
+PASS — No verified HIGH/MEDIUM production bugs, security issues, logic errors, cross-boundary mismatches, or dead-code problems detected in the complete branch diff against `origin/master`.
+
+Summary: 0 high, 0 medium, 0 low reported
+Status: PASS
+
+Verification run: `uv run pytest -q tests/unit/test_forecast_repository.py tests/unit/test_forecast_protocol.py tests/unit/test_forecast_scoring.py tests/unit/test_corpus_pipeline.py tests/unit/test_cli.py tests/e2e/test_diligence_demo.py`
+Result: 86 passed in 19.32s.
+</pre>
+</body></html>

@@ -1,0 +1,38 @@
+{
+  "deal_id": "whitestone-ares-2026",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.trefis.com/data/companies/WSR",
+      "published_at": "2026-04-09T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Whitestone REIT / Ares agreement",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.trefis.com/data/companies/WSR",
+      "published_at": "2026-04-09T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Whitestone REIT / Ares agreement",
+      "summary": "Whitestone REIT was reported to have entered a definitive merger agreement to be acquired by Ares Real Estate funds.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2026-04-09T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "Whitestone REIT / Ares agreement"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

@@ -21,8 +21,11 @@ from rich.progress import Progress
 from rich.table import Table
 
 from engram.config import Settings
+from engram.llm.provider import LLMProvider
 from engram.models.branch_forecasting import ContextBudget
 from engram.models.forecasting import (
+    BaselineDecisionRecord,
+    DecisionRecord,
     EvidenceDossier,
     EvidenceItem,
     ForecastQuestion,
@@ -34,8 +37,14 @@ from engram.models.forecasting import (
     ResolutionCriteria,
 )
 from engram.services.branch_forecasting import BranchForecaster, evidence_from_path
-from engram.services.forecast_protocol import DeterministicForecastProtocol
-from engram.services.forecast_repository import ForecastRepository, JsonForecastRepository
+from engram.services.forecast_audit import build_audit_report
+from engram.services.forecast_impact import TimeWindow, build_impact_report
+from engram.services.forecast_protocol import DeterministicForecastProtocol, LLMForecastProtocol
+from engram.services.forecast_repository import (
+    ForecastRepository,
+    JsonForecastRepository,
+    migrate_json_forecast_ledger,
+)
 from engram.services.forecast_scoring import ForecastScorer, build_calibration_report
 from engram.storage.neo4j import Neo4jStore
 
@@ -43,6 +52,13 @@ app = typer.Typer(name="engram", help="Temporal knowledge graph engine for AI me
 console = Console()
 settings = Settings()
 ALLOWED_BRANCH_OPTION = typer.Option(..., help="Allowed branch name; repeat for each branch")
+
+
+def _warn_deprecated_command(command: str, replacement: str) -> None:
+    typer.echo(
+        f"Warning: '{command}' is deprecated; use '{replacement}' instead.",
+        err=True,
+    )
 
 
 class CLIError(Exception):
@@ -630,20 +646,24 @@ def forecast_dossier_compile(
     repo: str = typer.Option(..., help="Forecast ledger repository path"),
     question_id: str = typer.Option(..., help="Question ID"),
     evidence_json: str = typer.Option(..., help="JSON evidence records path"),
-    output: str = typer.Option(..., help="Output dossier JSON path"),
+    output: str | None = typer.Option(None, help="Optional dossier JSON output path"),
 ) -> None:
-    """Compile an MVP EvidenceDossier from JSON evidence records, without Neo4j."""
+    """Compile and persist an MVP EvidenceDossier from JSON evidence records."""
 
     try:
         repository = _build_forecast_repository(repo)
         question = repository.load_question(question_id)
         dossier = _build_evidence_compiler(evidence_json).compile(question)
-        _write_model_json(Path(output), dossier)
+        repository.save_dossier(dossier)
+        if output:
+            _write_model_json(Path(output), dossier)
     except (OSError, ValueError, CLIError, json.JSONDecodeError) as exc:
         console.print(f"[bold red]✗ {exc}[/bold red]")
         raise typer.Exit(code=1) from exc
 
-    console.print(f"[bold green]✓ Evidence dossier written: {output}[/bold green]")
+    console.print(f"[bold green]✓ Evidence dossier saved: {dossier.id}[/bold green]")
+    if output:
+        console.print(f"[bold green]✓ Evidence dossier written: {output}[/bold green]")
 
 
 @app.command("forecast-run-create")
@@ -653,8 +673,9 @@ def forecast_run_create(
     dossier: str = typer.Option(..., help="Evidence dossier JSON path"),
     run_id: str | None = typer.Option(None, help="Optional run ID"),
     output: str | None = typer.Option(None, help="Optional run JSON output path"),
+    protocol: str = typer.Option("deterministic-baseline", help="deterministic-baseline or llm.v1"),
 ) -> None:
-    """Create and persist a deterministic forecast run."""
+    """Create and persist a forecast run."""
 
     try:
         repository = _build_forecast_repository(repo)
@@ -662,7 +683,15 @@ def forecast_run_create(
         evidence_dossier = EvidenceDossier.model_validate_json(
             Path(dossier).read_text(encoding="utf-8")
         )
-        run = _build_forecast_protocol().create_run(question, evidence_dossier, run_id=run_id)
+        ledger_dossier = repository.load_dossier(evidence_dossier.id)
+        if _stable_model_json(ledger_dossier) != _stable_model_json(evidence_dossier):
+            raise ValueError("dossier file does not match persisted ledger dossier")
+        if protocol == "deterministic-baseline":
+            run = _build_forecast_protocol().create_run(question, evidence_dossier, run_id=run_id)
+        elif protocol == "llm.v1":
+            run = asyncio.run(_create_llm_forecast_run(question, evidence_dossier, run_id=run_id))
+        else:
+            raise ValueError(f"unsupported forecast protocol: {protocol}")
         repository.save_run(run)
         if output:
             _write_model_json(Path(output), run)
@@ -672,6 +701,20 @@ def forecast_run_create(
 
     console.print(f"[bold green]✓ Forecast run saved: {run.id}[/bold green]")
     console.print(f"[bold blue]Top branch: {run.top_branch}[/bold blue]")
+
+
+
+
+def _stable_model_json(model: Any) -> str:
+    return json.dumps(model.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+
+async def _create_llm_forecast_run(
+    question: ForecastQuestion, dossier: EvidenceDossier, *, run_id: str | None
+) -> ForecastRun:
+    provider = LLMProvider(model=settings.llm_model, temperature=settings.llm_temperature)
+    return await LLMForecastProtocol(
+        provider, model_name=settings.llm_model, temperature=settings.llm_temperature
+    ).create_run(question, dossier, run_id=run_id)
 
 
 @app.command("forecast-resolve-create")
@@ -738,6 +781,168 @@ def forecast_score_report(
         console.print("[yellow]Low sample warning: calibration report is provisional.[/yellow]")
 
 
+@app.command("forecast-ledger-migrate")
+def forecast_ledger_migrate(
+    from_dir: str = typer.Option(..., "--from", help="Source forecast ledger directory"),
+    to_dir: str = typer.Option(..., "--to", help="Target forecast ledger directory"),
+) -> None:
+    """Forward-copy a JSON forecast ledger and verify migrated artifacts."""
+
+    try:
+        summary = migrate_json_forecast_ledger(from_dir, to_dir)
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(json.dumps({key: len(value) for key, value in summary.items()}, indent=2))
+
+
+@app.command("forecast-decision-create")
+def forecast_decision_create(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    decision_id: str = typer.Option(..., help="Decision ID"),
+    decided_at: str = typer.Option(..., help="Decision timestamp"),
+    decision_type: str = typer.Option(..., help="Decision type"),
+    primary_forecast_run_id: str = typer.Option(..., help="Primary forecast run ID"),
+    expected_outcome_branch: str = typer.Option(..., help="Expected outcome branch"),
+    rationale: str = typer.Option(..., help="Decision rationale"),
+    supporting_forecast_run_id: Annotated[
+        list[str] | None,
+        typer.Option("--supporting-forecast-run-id", help="Supporting forecast run ID"),
+    ] = None,
+) -> None:
+    """Create a forecast-linked decision record."""
+
+    try:
+        decision = DecisionRecord(
+            decision_id=decision_id,
+            decided_at=_parse_datetime(decided_at, "decided-at"),
+            decision_type=decision_type,
+            primary_forecast_run_id=primary_forecast_run_id,
+            supporting_forecast_run_ids=supporting_forecast_run_id or [],
+            rationale=rationale,
+            expected_outcome_branch=expected_outcome_branch,
+        )
+        _build_forecast_repository(repo).save_decision(decision)
+    except (OSError, ValueError, FileExistsError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Forecast-linked decision saved: {decision.decision_id}[/bold green]")
+
+
+@app.command("forecast-decision-resolve")
+def forecast_decision_resolve(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    decision_id: str = typer.Option(..., help="Decision ID"),
+    realized_outcome_branch: str = typer.Option(..., help="Realized outcome branch"),
+    impact_value: float | None = typer.Option(None, help="Optional impact value"),
+    impact_kind: str | None = typer.Option(None, help="avoided_loss, hit, or miss"),
+    baseline: bool = typer.Option(False, help="Resolve a baseline decision instead"),
+) -> None:
+    """Resolve a forecast-linked or baseline decision record."""
+
+    try:
+        repository = _build_forecast_repository(repo)
+        if baseline:
+            resolved = repository.resolve_baseline_decision(
+                decision_id,
+                realized_outcome_branch=realized_outcome_branch,
+                impact_value=impact_value,
+                impact_kind=impact_kind,
+            )
+        else:
+            resolved = repository.resolve_decision(
+                decision_id,
+                realized_outcome_branch=realized_outcome_branch,
+                impact_value=impact_value,
+                impact_kind=impact_kind,
+            )
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Decision resolved: {resolved.decision_id}[/bold green]")
+
+
+@app.command("forecast-baseline-decision-create")
+def forecast_baseline_decision_create(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    decision_id: str = typer.Option(..., help="Decision ID"),
+    decided_at: str = typer.Option(..., help="Decision timestamp"),
+    decision_type: str = typer.Option(..., help="Decision type"),
+    expected_outcome_branch: str = typer.Option(..., help="Expected outcome branch"),
+    rationale: str = typer.Option(..., help="Decision rationale"),
+) -> None:
+    """Create a pre-forecast baseline decision record."""
+
+    try:
+        decision = BaselineDecisionRecord(
+            decision_id=decision_id,
+            decided_at=_parse_datetime(decided_at, "decided-at"),
+            decision_type=decision_type,
+            rationale=rationale,
+            expected_outcome_branch=expected_outcome_branch,
+        )
+        _build_forecast_repository(repo).save_baseline_decision(decision)
+    except (OSError, ValueError, FileExistsError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold green]✓ Baseline decision saved: {decision.decision_id}[/bold green]")
+
+
+@app.command("forecast-impact-report")
+def forecast_impact_report(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    baseline_window: str = typer.Option(..., help="Baseline window START..END"),
+    measure_window: str = typer.Option(..., help="Measurement window START..END"),
+    min_resolved_records: int = typer.Option(10, help="Minimum resolved records per side"),
+    output: str | None = typer.Option(None, help="Optional report JSON output path"),
+) -> None:
+    """Build a baseline-vs-forecast decision impact report."""
+
+    try:
+        report = build_impact_report(
+            _build_forecast_repository(repo),
+            baseline_window=TimeWindow.parse(baseline_window),
+            measure_window=TimeWindow.parse(measure_window),
+            min_resolved_records=min_resolved_records,
+        )
+        if output:
+            output_path = Path(output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(json.dumps(report, indent=2))
+
+
+@app.command("forecast-audit-report")
+def forecast_audit_report(
+    repo: str = typer.Option(..., help="Forecast ledger repository path"),
+    spot_check: int = typer.Option(0, help="Number of runs to spot-check"),
+    output: str | None = typer.Option(None, help="Optional report JSON output path"),
+) -> None:
+    """Build a CI-usable lifecycle audit report for a forecast ledger."""
+
+    try:
+        report = build_audit_report(_build_forecast_repository(repo), spot_check=spot_check)
+        if output:
+            output_path = Path(output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]✗ {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(json.dumps(report, indent=2))
+    if report["status"] != "PASS":
+        raise typer.Exit(code=1)
+
+
 @app.command()
 def create_forecast_question(
     target_entity_id: str = typer.Option(..., help="Target entity to forecast"),
@@ -751,7 +956,8 @@ def create_forecast_question(
     tenant_id: str = typer.Option("default", help="Tenant identifier"),
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
-    """Persist a canonical forecast question."""
+    """Deprecated: use forecast-question-create for new JSON-ledger questions."""
+    _warn_deprecated_command("create-forecast-question", "forecast-question-create")
     asyncio.run(
         _create_forecast_question_impl(
             target_entity_id=target_entity_id,
@@ -829,7 +1035,8 @@ def run_forecast(
     tenant_id: str = typer.Option("default", help="Tenant identifier"),
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
-    """Run a forecast and persist the immutable run artifact."""
+    """Deprecated: use forecast-run-create for canonical JSON-ledger runs."""
+    _warn_deprecated_command("run-forecast", "forecast-run-create")
     asyncio.run(
         _run_forecast_impl(
             file=file,
@@ -932,7 +1139,8 @@ def resolve_forecast(
     tenant_id: str = typer.Option("default", help="Tenant identifier"),
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
-    """Persist an observed resolution for a forecast question."""
+    """Deprecated: use forecast-resolve-create for canonical JSON-ledger resolutions."""
+    _warn_deprecated_command("resolve-forecast", "forecast-resolve-create")
     asyncio.run(
         _resolve_forecast_impl(
             question_id=question_id,
@@ -998,7 +1206,8 @@ def score_forecasts(
     tenant_id: str = typer.Option("default", help="Tenant identifier"),
     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
 ) -> None:
-    """Score persisted forecast runs against stored resolutions."""
+    """Deprecated: use forecast-score-report for canonical JSON-ledger scoring."""
+    _warn_deprecated_command("score-forecasts", "forecast-score-report")
     asyncio.run(
         _score_forecasts_impl(
             target_entity_id=target_entity_id,
@@ -1074,9 +1283,12 @@ def _parse_branch_option(value: str) -> OutcomeBranch:
 
 def _parse_datetime(value: str, field_name: str) -> datetime:
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise CLIError(f"Invalid {field_name} datetime: {value}") from exc
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _write_model_json(path: Path, model: Any) -> None:

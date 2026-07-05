@@ -1,0 +1,38 @@
+{
+  "deal_id": "hersha-ksl-merger-2023",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://d18rn0p25nwr6d.cloudfront.net/CIK-0001063344/45acf7a7-ea52-4bf1-a4c0-e8ed6cdda698.html",
+      "published_at": "2023-11-28T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Hersha Hospitality / KSL acquisition",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://d18rn0p25nwr6d.cloudfront.net/CIK-0001063344/45acf7a7-ea52-4bf1-a4c0-e8ed6cdda698.html",
+      "published_at": "2023-11-28T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Hersha Hospitality / KSL acquisition",
+      "summary": "Hersha Hospitality completed its acquisition by KSL Capital Partners affiliates.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2023-11-28T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "Hersha Hospitality / KSL acquisition"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

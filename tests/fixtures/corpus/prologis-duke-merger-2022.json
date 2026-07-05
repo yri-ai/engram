@@ -1,0 +1,38 @@
+{
+  "deal_id": "prologis-duke-merger-2022",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://ir.prologis.com/press-releases/detail/940/prologis-stockholders-and-duke-realty-shareholders-approve",
+      "published_at": "2022-10-03T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Prologis / Duke Realty merger",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://ir.prologis.com/press-releases/detail/940/prologis-stockholders-and-duke-realty-shareholders-approve",
+      "published_at": "2022-10-03T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Prologis / Duke Realty merger",
+      "summary": "Prologis and Duke Realty shareholder approvals preceded completion of their all-stock REIT merger.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2022-10-03T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "Prologis / Duke Realty merger"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

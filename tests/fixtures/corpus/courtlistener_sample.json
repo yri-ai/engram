@@ -1,0 +1,33 @@
+{
+  "deal_id": "capital-funding-batavia-foreclosure-2024",
+  "source_kind": "courtlistener",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.courtlistener.com/docket/68213286/capital-funding-llc-v-batavia-llc/",
+      "published_at": "2024-01-31T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "CourtListener docket 1:24-cv-00888",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "courtlistener-docket",
+      "url": "https://www.courtlistener.com/docket/68213286/capital-funding-llc-v-batavia-llc/",
+      "published_at": "2024-01-31T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "CourtListener docket 1:24-cv-00888",
+      "summary": "Capital Funding LLC v. Batavia LLC is a CourtListener mortgage foreclosure docket with real property foreclosure nature of suit.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2024-01-31T00:00:00+00:00",
+      "kind": "foreclosure_filed",
+      "description": "Mortgage foreclosure docket filed."
+    }
+  ],
+  "resolved_branch": "terminated_or_failed",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

@@ -1,0 +1,826 @@
+diff --git c/src/engram/cli/main.py w/src/engram/cli/main.py
+index 4a4bb63..df3c247 100644
+--- c/src/engram/cli/main.py
++++ w/src/engram/cli/main.py
+@@ -35,7 +35,11 @@ from engram.models.forecasting import (
+ )
+ from engram.services.branch_forecasting import BranchForecaster, evidence_from_path
+ from engram.services.forecast_protocol import DeterministicForecastProtocol
+-from engram.services.forecast_repository import ForecastRepository, JsonForecastRepository
++from engram.services.forecast_repository import (
++    ForecastRepository,
++    JsonForecastRepository,
++    migrate_json_forecast_ledger,
++)
+ from engram.services.forecast_scoring import ForecastScorer, build_calibration_report
+ from engram.storage.neo4j import Neo4jStore
+
+@@ -45,6 +49,13 @@ settings = Settings()
+ ALLOWED_BRANCH_OPTION = typer.Option(..., help="Allowed branch name; repeat for each branch")
+
+
++def _warn_deprecated_command(command: str, replacement: str) -> None:
++    typer.echo(
++        f"Warning: '{command}' is deprecated; use '{replacement}' instead.",
++        err=True,
++    )
++
++
+ class CLIError(Exception):
+     """Custom exception for CLI failures."""
+
+@@ -630,20 +641,24 @@ def forecast_dossier_compile(
+     repo: str = typer.Option(..., help="Forecast ledger repository path"),
+     question_id: str = typer.Option(..., help="Question ID"),
+     evidence_json: str = typer.Option(..., help="JSON evidence records path"),
+-    output: str = typer.Option(..., help="Output dossier JSON path"),
++    output: str | None = typer.Option(None, help="Optional dossier JSON output path"),
+ ) -> None:
+-    """Compile an MVP EvidenceDossier from JSON evidence records, without Neo4j."""
++    """Compile and persist an MVP EvidenceDossier from JSON evidence records."""
+
+     try:
+         repository = _build_forecast_repository(repo)
+         question = repository.load_question(question_id)
+         dossier = _build_evidence_compiler(evidence_json).compile(question)
+-        _write_model_json(Path(output), dossier)
++        repository.save_dossier(dossier)
++        if output:
++            _write_model_json(Path(output), dossier)
+     except (OSError, ValueError, CLIError, json.JSONDecodeError) as exc:
+         console.print(f"[bold red]✗ {exc}[/bold red]")
+         raise typer.Exit(code=1) from exc
+
+-    console.print(f"[bold green]✓ Evidence dossier written: {output}[/bold green]")
++    console.print(f"[bold green]✓ Evidence dossier saved: {dossier.id}[/bold green]")
++    if output:
++        console.print(f"[bold green]✓ Evidence dossier written: {output}[/bold green]")
+
+
+ @app.command("forecast-run-create")
+@@ -738,6 +753,22 @@ def forecast_score_report(
+         console.print("[yellow]Low sample warning: calibration report is provisional.[/yellow]")
+
+
++@app.command("forecast-ledger-migrate")
++def forecast_ledger_migrate(
++    from_dir: str = typer.Option(..., "--from", help="Source forecast ledger directory"),
++    to_dir: str = typer.Option(..., "--to", help="Target forecast ledger directory"),
++) -> None:
++    """Forward-copy a JSON forecast ledger and verify migrated artifacts."""
++
++    try:
++        summary = migrate_json_forecast_ledger(from_dir, to_dir)
++    except (OSError, ValueError) as exc:
++        console.print(f"[bold red]✗ {exc}[/bold red]")
++        raise typer.Exit(code=1) from exc
++
++    console.print(json.dumps({key: len(value) for key, value in summary.items()}, indent=2))
++
++
+ @app.command()
+ def create_forecast_question(
+     target_entity_id: str = typer.Option(..., help="Target entity to forecast"),
+@@ -751,7 +782,8 @@ def create_forecast_question(
+     tenant_id: str = typer.Option("default", help="Tenant identifier"),
+     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+ ) -> None:
+-    """Persist a canonical forecast question."""
++    """Deprecated: use forecast-question-create for new JSON-ledger questions."""
++    _warn_deprecated_command("create-forecast-question", "forecast-question-create")
+     asyncio.run(
+         _create_forecast_question_impl(
+             target_entity_id=target_entity_id,
+@@ -829,7 +861,8 @@ def run_forecast(
+     tenant_id: str = typer.Option("default", help="Tenant identifier"),
+     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+ ) -> None:
+-    """Run a forecast and persist the immutable run artifact."""
++    """Deprecated: use forecast-run-create for canonical JSON-ledger runs."""
++    _warn_deprecated_command("run-forecast", "forecast-run-create")
+     asyncio.run(
+         _run_forecast_impl(
+             file=file,
+@@ -932,7 +965,8 @@ def resolve_forecast(
+     tenant_id: str = typer.Option("default", help="Tenant identifier"),
+     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+ ) -> None:
+-    """Persist an observed resolution for a forecast question."""
++    """Deprecated: use forecast-resolve-create for canonical JSON-ledger resolutions."""
++    _warn_deprecated_command("resolve-forecast", "forecast-resolve-create")
+     asyncio.run(
+         _resolve_forecast_impl(
+             question_id=question_id,
+@@ -998,7 +1032,8 @@ def score_forecasts(
+     tenant_id: str = typer.Option("default", help="Tenant identifier"),
+     conversation_id: str = typer.Option("forecasting", help="Conversation / scope identifier"),
+ ) -> None:
+-    """Score persisted forecast runs against stored resolutions."""
++    """Deprecated: use forecast-score-report for canonical JSON-ledger scoring."""
++    _warn_deprecated_command("score-forecasts", "forecast-score-report")
+     asyncio.run(
+         _score_forecasts_impl(
+             target_entity_id=target_entity_id,
+diff --git c/src/engram/models/forecasting.py w/src/engram/models/forecasting.py
+index 0c16907..d6011bd 100644
+--- c/src/engram/models/forecasting.py
++++ w/src/engram/models/forecasting.py
+@@ -54,6 +54,7 @@ class ForecastQuestion(BaseModel):
+     graph-backed forecast lifecycle shape used by earlier CLI commands.
+     """
+
++    schema_version: int = 1
+     id: str
+     tenant_id: str = "default"
+
+@@ -129,6 +130,7 @@ class EvidenceItem(BaseModel):
+ class EvidenceDossier(BaseModel):
+     """Evidence compiled for one question using only information known as-of."""
+
++    schema_version: int = 1
+     id: str
+     question_id: str
+     forecast_as_of: datetime
+@@ -152,6 +154,7 @@ class ForecastRun(BaseModel):
+
+     model_config = ConfigDict(frozen=True)
+
++    schema_version: int = 1
+     id: str
+     question_id: str
+     forecast_as_of: datetime
+@@ -240,6 +243,8 @@ class ForecastRun(BaseModel):
+ class ForecastResolution(BaseModel):
+     """Observed outcome for a forecast question/run."""
+
++    schema_version: int = 1
++
+     # Temporal kernel / JSON ledger shape.
+     id: str | None = None
+     question_id: str
+@@ -277,6 +282,7 @@ class ForecastResolution(BaseModel):
+ class ForecastScore(BaseModel):
+     """Stored scoring output for a resolved forecast run."""
+
++    schema_version: int = 1
+     id: str | None = None
+     run_id: str
+     question_id: str
+@@ -300,6 +306,7 @@ class ForecastScore(BaseModel):
+ class CalibrationSummary(BaseModel):
+     """Aggregate calibration metrics over a set of scored forecast runs."""
+
++    schema_version: int = 1
+     id: str
+     run_count: int = Field(ge=0)
+     mean_brier_score: float | None = Field(default=None, ge=0.0)
+diff --git c/src/engram/services/forecast_repository.py w/src/engram/services/forecast_repository.py
+index eea02dc..4f020b8 100644
+--- c/src/engram/services/forecast_repository.py
++++ w/src/engram/services/forecast_repository.py
+@@ -2,7 +2,9 @@
+
+ from __future__ import annotations
+
++import json
+ import os
++import shutil
+ from pathlib import Path
+ from typing import TYPE_CHECKING, Any, TypeVar
+
+@@ -10,6 +12,7 @@ from pydantic import BaseModel
+
+ from engram.models.fact import Fact
+ from engram.models.forecasting import (
++    EvidenceDossier,
+     ForecastQuestion,
+     ForecastResolution,
+     ForecastRun,
+@@ -18,9 +21,16 @@ from engram.models.forecasting import (
+ )
+
+ if TYPE_CHECKING:
++    from collections.abc import Sequence
++
+     from engram.storage.base import GraphStore
+
+ ModelT = TypeVar("ModelT", bound=BaseModel)
++SUPPORTED_SCHEMA_VERSION = 1
++
++
++class SchemaVersionError(ValueError):
++    """Raised when a persisted forecast artifact uses an unsupported schema."""
+
+
+ class JsonForecastRepository:
+@@ -40,8 +50,10 @@ class JsonForecastRepository:
+         self.runs_dir = self.root / "runs"
+         self.resolutions_dir = self.root / "resolutions"
+         self.scores_dir = self.root / "scores"
++        self.dossiers_dir = self.root / "dossiers"
+         for directory in (
+             self.questions_dir,
++            self.dossiers_dir,
+             self.runs_dir,
+             self.resolutions_dir,
+             self.scores_dir,
+@@ -67,9 +79,24 @@ class JsonForecastRepository:
+     def list_questions(self) -> list[ForecastQuestion]:
+         return self._list(self.questions_dir, ForecastQuestion)
+
++    def save_dossier(self, dossier: EvidenceDossier) -> None:
++        self._atomic_create(
++            self._path(self.dossiers_dir, dossier.id),
++            dossier,
++            exists_message="evidence dossier already exists",
++        )
++
++    def load_dossier(self, dossier_id: str) -> EvidenceDossier:
++        return self._load(self._path(self.dossiers_dir, dossier_id), EvidenceDossier)
++
++    def list_dossiers(self) -> list[EvidenceDossier]:
++        return self._list(self.dossiers_dir, EvidenceDossier)
++
+     def save_run(self, run: ForecastRun) -> None:
++        if run.dossier_id is not None and not self._path(self.dossiers_dir, run.dossier_id).exists():
++            raise ValueError(f"dossier_id does not exist in ledger: {run.dossier_id}")
+         path = self._path(self.runs_dir, run.id)
+-        self._atomic_create(path, run)
++        self._atomic_create(path, run, exists_message="forecast run already exists")
+
+     def load_run(self, run_id: str) -> ForecastRun:
+         return self._load(self._path(self.runs_dir, run_id), ForecastRun)
+@@ -80,10 +107,14 @@ class JsonForecastRepository:
+     def save_resolution(self, resolution: ForecastResolution) -> None:
+         question = self.load_question(resolution.question_id)
+         question_branch_ids = {branch.id for branch in question.branches}
+-        if resolution.resolved_branch not in question_branch_ids:
+-            raise ValueError("resolved branch must be one of the question branches")
+-        if set(resolution.branch_ids) != question_branch_ids:
+-            raise ValueError("resolution branch ids must match question branches")
++        if question_branch_ids:
++            if resolution.resolved_branch not in question_branch_ids:
++                raise ValueError("resolved branch must be one of the question branches")
++            if set(resolution.branch_ids) != question_branch_ids:
++                raise ValueError("resolution branch ids must match question branches")
++        for existing in self.list_resolutions():
++            if existing.question_id == resolution.question_id:
++                raise ValueError(f"question already has a resolution: {resolution.question_id}")
+         resolution_id = resolution.id
+         if resolution_id is None:
+             raise ValueError("resolution id is required for JSON forecast repository")
+@@ -114,7 +145,13 @@ class JsonForecastRepository:
+
+     @staticmethod
+     def _load(path: Path, model: type[ModelT]) -> ModelT:
+-        return model.model_validate_json(path.read_text(encoding="utf-8"))
++        raw = json.loads(path.read_text(encoding="utf-8"))
++        version = raw.get("schema_version", SUPPORTED_SCHEMA_VERSION)
++        if version != SUPPORTED_SCHEMA_VERSION:
++            raise SchemaVersionError(
++                f"Unsupported schema_version {version} for {model.__name__}: {path}"
++            )
++        return model.model_validate(raw)
+
+     def _list(self, directory: Path, model: type[ModelT]) -> list[ModelT]:
+         return [self._load(path, model) for path in sorted(directory.glob("*.json"))]
+@@ -126,7 +163,7 @@ class JsonForecastRepository:
+         os.replace(tmp_path, path)
+
+     @staticmethod
+-    def _atomic_create(path: Path, record: BaseModel) -> None:
++    def _atomic_create(path: Path, record: BaseModel, *, exists_message: str) -> None:
+         """Exclusive-create write: fails if path exists, race-safe across writers.
+
+         Writes to a temp file, then ``os.link`` claims the final name atomically.
+@@ -137,11 +174,69 @@ class JsonForecastRepository:
+         try:
+             os.link(tmp_path, path)
+         except FileExistsError:
+-            raise FileExistsError(f"forecast run already exists: {path.stem}") from None
++            raise FileExistsError(f"{exists_message}: {path.stem}") from None
+         finally:
+             tmp_path.unlink(missing_ok=True)
+
+
++def migrate_json_forecast_ledger(from_dir: str | Path, to_dir: str | Path) -> dict[str, list[str]]:
++    """Forward-copy a JSON forecast ledger and verify stable semantic equality."""
++
++    source_path = Path(from_dir).resolve()
++    target_path = Path(to_dir).resolve()
++    if source_path == target_path:
++        raise ValueError("in-place migration is not allowed")
++    if target_path.exists() and any(target_path.iterdir()):
++        raise ValueError("migration target must be empty or absent")
++
++    source = JsonForecastRepository(source_path)
++    if target_path.exists():
++        shutil.rmtree(target_path)
++    target = JsonForecastRepository(target_path)
++
++    for question in source.list_questions():
++        target.save_question(question)
++    for dossier in source.list_dossiers():
++        target.save_dossier(dossier)
++    for run in source.list_runs():
++        target.save_run(run)
++    for resolution in source.list_resolutions():
++        target.save_resolution(resolution)
++    for score in source.list_scores():
++        target.save_score(score)
++
++    summary = {
++        "questions": _verify_records(source.list_questions(), target.list_questions()),
++        "dossiers": _verify_records(source.list_dossiers(), target.list_dossiers()),
++        "runs": _verify_records(source.list_runs(), target.list_runs()),
++        "resolutions": _verify_records(source.list_resolutions(), target.list_resolutions()),
++        "scores": _verify_records(
++            source.list_scores(), target.list_scores(), normalize_fields={"scored_at"}
++        ),
++    }
++    return summary
++
++
++def _verify_records(
++    source_records: Sequence[BaseModel],
++    target_records: Sequence[BaseModel],
++    *,
++    normalize_fields: set[str] | None = None,
++) -> list[str]:
++    source_payloads = [_normalized_record(record, normalize_fields or set()) for record in source_records]
++    target_payloads = [_normalized_record(record, normalize_fields or set()) for record in target_records]
++    if source_payloads != target_payloads:
++        raise ValueError("migration verification failed")
++    return [str(payload.get("id")) for payload in source_payloads]
++
++
++def _normalized_record(record: BaseModel, normalize_fields: set[str]) -> dict[str, Any]:
++    payload = record.model_dump(mode="json")
++    for field in normalize_fields:
++        payload.pop(field, None)
++    return dict(sorted(payload.items()))
++
++
+ class ForecastRepository:
+     """Persist forecast lifecycle models using graph facts."""
+
+diff --git c/tests/unit/test_cli.py w/tests/unit/test_cli.py
+index 6596c03..8099e7c 100644
+--- c/tests/unit/test_cli.py
++++ w/tests/unit/test_cli.py
+@@ -282,6 +282,7 @@ def test_forecast_kernel_cli_flow_uses_json_dossier_without_neo4j(
+     assert dossier["question_id"] == "q-cli"
+     assert dossier["evidence_items"][0]["id"] == "e-renewal-signal"
+     assert dossier["compiler"] == "json_evidence.v1"
++    assert json.loads((repo_path / "dossiers" / "dossier-q-cli.json").read_text()) == dossier
+
+     run_result = runner.invoke(
+         cli.app,
+@@ -414,6 +415,108 @@ def test_forecast_dossier_compile_rejects_future_recorded_json_evidence(
+     assert "recorded after forecast_as_of" in result.stdout
+
+
++def test_forecast_dossier_compile_output_is_optional(runner: CliRunner, tmp_path) -> None:
++    repo_path = tmp_path / "forecast-ledger"
++    evidence_path = tmp_path / "evidence.json"
++    as_of = "2026-01-15T00:00:00+00:00"
++    runner.invoke(
++        cli.app,
++        [
++            "forecast-question-create",
++            "--repo",
++            str(repo_path),
++            "--question-id",
++            "q-no-output",
++            "--title",
++            "Will Alice renew?",
++            "--forecast-as-of",
++            as_of,
++            "--horizon",
++            "30d",
++            "--resolution-criteria",
++            "Renewal is recorded by the horizon.",
++            "--branch",
++            "yes:Yes",
++            "--branch",
++            "no:No",
++        ],
++    )
++    evidence_path.write_text(
++        json.dumps(
++            [
++                {
++                    "id": "e-1",
++                    "text": "Renewal paperwork requested.",
++                    "valid_from": as_of,
++                    "recorded_from": as_of,
++                    "source_id": "source-1",
++                    "supports_branch": ["yes"],
++                    "supersession_status": "current_as_of",
++                }
++            ]
++        )
++    )
++
++    result = runner.invoke(
++        cli.app,
++        [
++            "forecast-dossier-compile",
++            "--repo",
++            str(repo_path),
++            "--question-id",
++            "q-no-output",
++            "--evidence-json",
++            str(evidence_path),
++        ],
++    )
++
++    assert result.exit_code == 0
++    assert (repo_path / "dossiers" / "dossier-q-no-output.json").exists()
++
++
++def test_forecast_ledger_migrate_cli_refuses_in_place_and_copies(runner: CliRunner, tmp_path) -> None:
++    source = tmp_path / "source"
++    target = tmp_path / "target"
++    as_of = "2026-01-15T00:00:00+00:00"
++    create_result = runner.invoke(
++        cli.app,
++        [
++            "forecast-question-create",
++            "--repo",
++            str(source),
++            "--question-id",
++            "q-migrate",
++            "--title",
++            "Will Alice renew?",
++            "--forecast-as-of",
++            as_of,
++            "--horizon",
++            "30d",
++            "--resolution-criteria",
++            "Renewal is recorded by the horizon.",
++            "--branch",
++            "yes:Yes",
++            "--branch",
++            "no:No",
++        ],
++    )
++    assert create_result.exit_code == 0
++
++    result = runner.invoke(
++        cli.app,
++        ["forecast-ledger-migrate", "--from", str(source), "--to", str(target)],
++    )
++
++    assert result.exit_code == 0
++    assert (target / "questions" / "q-migrate.json").exists()
++    refused = runner.invoke(
++        cli.app,
++        ["forecast-ledger-migrate", "--from", str(source), "--to", str(source)],
++    )
++    assert refused.exit_code == 1
++    assert "in-place migration" in refused.stdout
++
++
+ def test_forecast_factory_seams_are_used(
+     monkeypatch: pytest.MonkeyPatch, runner: CliRunner, tmp_path
+ ) -> None:
+@@ -578,6 +681,38 @@ def test_cli_create_forecast_question_command(
+         forecast_as_of=datetime(2026, 5, 1, tzinfo=UTC),
+     )
+     assert context.closed is True
++    assert "deprecated" in result.stderr.lower()
++    assert "forecast-question-create" in result.stderr
++
++
++def test_canonical_forecast_question_create_emits_no_deprecation_warning(
++    runner: CliRunner, tmp_path
++) -> None:
++    result = runner.invoke(
++        cli.app,
++        [
++            "forecast-question-create",
++            "--repo",
++            str(tmp_path),
++            "--question-id",
++            "q-canonical",
++            "--title",
++            "Canonical command",
++            "--forecast-as-of",
++            "2026-01-15T00:00:00+00:00",
++            "--horizon",
++            "30d",
++            "--resolution-criteria",
++            "Resolved by records.",
++            "--branch",
++            "yes:Yes",
++            "--branch",
++            "no:No",
++        ],
++    )
++
++    assert result.exit_code == 0
++    assert "deprecated" not in result.stderr.lower()
+
+
+ def test_cli_run_forecast_command_persists_forecast_run(
+@@ -644,6 +779,8 @@ def test_cli_run_forecast_command_persists_forecast_run(
+     assert saved.metadata["extraction_variant"] == "default"
+     assert abs(sum(saved.branch_probabilities.values()) - 1.0) < 1e-6
+     assert context.closed is True
++    assert "deprecated" in result.stderr.lower()
++    assert "forecast-run-create" in result.stderr
+
+
+ def test_cli_resolve_forecast_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+@@ -686,6 +823,8 @@ def test_cli_resolve_forecast_command(monkeypatch: pytest.MonkeyPatch, runner: C
+     assert saved.run_id == "fr-1"
+     assert saved.resolved_at == datetime(2026, 6, 15, tzinfo=UTC)
+     assert context.closed is True
++    assert "deprecated" in result.stderr.lower()
++    assert "forecast-resolve-create" in result.stderr
+
+
+ def test_cli_score_forecasts_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+@@ -737,6 +876,8 @@ def test_cli_score_forecasts_command(monkeypatch: pytest.MonkeyPatch, runner: Cl
+     assert payload["aggregate"]["top_1_accuracy"] == 1.0
+     assert payload["per_question"][0]["question_id"] == "fq-1"
+     assert context.closed is True
++    assert "deprecated" in result.stderr.lower()
++    assert "forecast-score-report" in result.stderr
+
+
+ def test_cli_score_forecasts_command_scores_all_questions_for_target(
+diff --git c/tests/unit/test_forecast_repository.py w/tests/unit/test_forecast_repository.py
+index 2856898..318b2de 100644
+--- c/tests/unit/test_forecast_repository.py
++++ w/tests/unit/test_forecast_repository.py
+@@ -2,12 +2,15 @@
+
+ from __future__ import annotations
+
++import json
+ from datetime import UTC, datetime
+
+ import pytest
+
+ from engram.models.entity import Entity, EntityType
+ from engram.models.forecasting import (
++    EvidenceDossier,
++    EvidenceItem,
+     ForecastQuestion,
+     ForecastQuestionType,
+     ForecastResolution,
+@@ -17,7 +20,12 @@ from engram.models.forecasting import (
+     QuestionStatus,
+     ResolutionCriteria,
+ )
+-from engram.services.forecast_repository import ForecastRepository, JsonForecastRepository
++from engram.services.forecast_repository import (
++    ForecastRepository,
++    JsonForecastRepository,
++    SchemaVersionError,
++    migrate_json_forecast_ledger,
++)
+ from engram.storage.memory import MemoryStore
+
+ NOW = datetime(2026, 1, 15, tzinfo=UTC)
+@@ -76,6 +84,7 @@ def test_save_load_and_list_run_refuses_duplicate_run_id(tmp_path):
+     run = _run(question)
+
+     repository.save_question(question)
++    repository.save_dossier(_dossier(question))
+     repository.save_run(run)
+
+     assert repository.load_run(run.id) == run
+@@ -113,6 +122,77 @@ def test_score_persistence(tmp_path):
+     assert repository.list_scores() == [score]
+
+
++def test_json_ledger_validates_schema_version_on_read(tmp_path):
++    repository = JsonForecastRepository(tmp_path)
++    question = _question()
++    repository.save_question(question)
++    payload = json.loads((tmp_path / "questions" / f"{question.id}.json").read_text())
++    payload["schema_version"] = 999
++    (tmp_path / "questions" / f"{question.id}.json").write_text(json.dumps(payload))
++
++    with pytest.raises(SchemaVersionError, match="Unsupported schema_version 999"):
++        repository.load_question(question.id)
++
++
++def test_dossier_round_trip_and_immutability(tmp_path):
++    repository = JsonForecastRepository(tmp_path)
++    dossier = _dossier(_question())
++
++    repository.save_dossier(dossier)
++
++    assert repository.load_dossier(dossier.id) == dossier
++    assert repository.list_dossiers() == [dossier]
++    with pytest.raises(FileExistsError, match="evidence dossier already exists"):
++        repository.save_dossier(dossier)
++
++
++def test_save_run_rejects_missing_dossier_reference(tmp_path):
++    repository = JsonForecastRepository(tmp_path)
++    question = _question()
++    repository.save_question(question)
++
++    with pytest.raises(ValueError, match="dossier_id does not exist"):
++        repository.save_run(_run(question))
++
++
++def test_save_resolution_rejects_second_resolution_for_question(tmp_path):
++    repository = JsonForecastRepository(tmp_path)
++    question = _question()
++    repository.save_question(question)
++    repository.save_resolution(_resolution(question))
++
++    second = _resolution(question).model_copy(update={"id": "resolution-q-binary-2"})
++    with pytest.raises(ValueError, match="question already has a resolution"):
++        repository.save_resolution(second)
++
++
++def test_migrate_json_forecast_ledger_copies_and_verifies(tmp_path):
++    source = tmp_path / "source"
++    target = tmp_path / "target"
++    repository = JsonForecastRepository(source)
++    question = _question()
++    dossier = _dossier(question)
++    run = _run(question)
++    repository.save_question(question)
++    repository.save_dossier(dossier)
++    repository.save_run(run)
++    repository.save_resolution(_resolution(question))
++    repository.save_score(_score())
++
++    summary = migrate_json_forecast_ledger(source, target)
++
++    assert summary == {
++        "questions": ["q-binary"],
++        "dossiers": ["dossier-q-binary"],
++        "runs": ["run-q-binary"],
++        "resolutions": ["resolution-q-binary"],
++        "scores": ["score-run-q-binary"],
++    }
++    assert JsonForecastRepository(target).load_run(run.id) == run
++    with pytest.raises(ValueError, match="in-place migration"):
++        migrate_json_forecast_ledger(source, source)
++
++
+ def _question(title: str = "Will Alice renew by February?") -> ForecastQuestion:
+     return ForecastQuestion(
+         id="q-binary",
+@@ -141,6 +221,26 @@ def _run(question: ForecastQuestion) -> ForecastRun:
+     )
+
+
++def _dossier(question: ForecastQuestion) -> EvidenceDossier:
++    return EvidenceDossier(
++        id="dossier-q-binary",
++        question_id=question.id,
++        forecast_as_of=question.forecast_as_of,
++        evidence_items=[
++            EvidenceItem(
++                id="e-1",
++                text="Alice requested renewal paperwork.",
++                valid_from=question.forecast_as_of,
++                recorded_from=question.forecast_as_of,
++                source_id="source-1",
++                supports_branch=["yes"],
++                supersession_status="current_as_of",
++            )
++        ],
++        compiler="json_evidence.v1",
++    )
++
++
+ def _resolution(question: ForecastQuestion) -> ForecastResolution:
+     return ForecastResolution(
+         id="resolution-q-binary",
+@@ -350,3 +450,53 @@ async def test_repository_reuses_deterministic_resolution_record_id(store: Memor
+         "tenant-1", deal.id, fact_key=ForecastRepository.RESOLUTION_FACT_KEY
+     )
+     assert len(facts) == 1
++
++
++@pytest.mark.asyncio
++async def test_json_graph_parity_for_questions_runs_and_resolutions(store: MemoryStore, tmp_path) -> None:
++    deal = _make_deal_entity()
++    await store.upsert_entity(deal)
++    graph_repository = ForecastRepository(
++        store,
++        tenant_id="tenant-1",
++        conversation_id="forecasting",
++        message_id="forecast-message-1",
++    )
++    json_repository = JsonForecastRepository(tmp_path)
++
++    for index in range(3):
++        question = _make_question().model_copy(update={"id": f"fq-{index}"})
++        run = _make_run().model_copy(update={"id": f"fr-{index}", "question_id": question.id})
++        resolution = _make_resolution().model_copy(
++            update={"question_id": question.id, "run_id": run.id}
++        )
++        await graph_repository.save_question(question)
++        await graph_repository.save_run(target_entity_id=deal.id, run=run)
++        await graph_repository.save_resolution(target_entity_id=deal.id, resolution=resolution)
++        json_repository.save_question(question)
++        json_repository.save_run(run)
++        json_repository.save_resolution(resolution.model_copy(update={"id": f"res-{index}"}))
++
++    graph_questions = await graph_repository.list_questions(target_entity_id=deal.id)
++    graph_runs = []
++    for question in graph_questions:
++        graph_runs.extend(
++            await graph_repository.list_runs(target_entity_id=deal.id, question_id=question.id)
++        )
++    graph_resolutions = [
++        await graph_repository.get_resolution(target_entity_id=deal.id, question_id=question.id)
++        for question in graph_questions
++    ]
++
++    assert _normalized_models(json_repository.list_questions()) == _normalized_models(graph_questions)
++    assert _normalized_models(json_repository.list_runs()) == _normalized_models(graph_runs)
++    assert _normalized_models(json_repository.list_resolutions(), exclude={"id"}) == _normalized_models(
++        [resolution for resolution in graph_resolutions if resolution is not None], exclude={"id"}
++    )
++
++
++def _normalized_models(models, *, exclude: set[str] | None = None):  # type: ignore[no-untyped-def]
++    return sorted(
++        json.dumps(model.model_dump(mode="json", exclude=exclude or set()), sort_keys=True)
++        for model in models
++    )
+diff --git c/tests/unit/test_forecast_scoring.py w/tests/unit/test_forecast_scoring.py
+index 2099018..d153536 100644
+--- c/tests/unit/test_forecast_scoring.py
++++ w/tests/unit/test_forecast_scoring.py
+@@ -5,6 +5,8 @@ from pathlib import Path
+ import pytest
+
+ from engram.models.forecasting import (
++    EvidenceDossier,
++    EvidenceItem,
+     ForecastQuestion,
+     ForecastQuestionType,
+     ForecastResolution,
+@@ -108,6 +110,7 @@ def test_report_builder_scores_repository_runs_and_warns_on_low_sample(tmp_path)
+     run = _run(question, probabilities={"yes": 0.7, "no": 0.3}, top_branch="yes")
+     resolution = _resolution(question, resolved_branch="yes")
+     repository.save_question(question)
++    repository.save_dossier(_dossier(question))
+     repository.save_run(run)
+     repository.save_resolution(resolution)
+
+@@ -131,6 +134,7 @@ def test_report_builder_buckets_top_branch_confidence_for_calibration(tmp_path):
+     run = _run(question, probabilities={"yes": 0.8, "no": 0.2}, top_branch="yes")
+     resolution = _resolution(question, resolved_branch="no")
+     repository.save_question(question)
++    repository.save_dossier(_dossier(question))
+     repository.save_run(run)
+     repository.save_resolution(resolution)
+
+@@ -146,6 +150,7 @@ def test_report_builder_can_skip_runs_missing_resolution(tmp_path):
+     repository = JsonForecastRepository(tmp_path)
+     question = _question("q-unresolved")
+     repository.save_question(question)
++    repository.save_dossier(_dossier(question))
+     repository.save_run(_run(question, probabilities={"yes": 0.7, "no": 0.3}, top_branch="yes"))
+
+     report = build_calibration_report(repository, skip_missing_resolutions=True)
+@@ -159,6 +164,7 @@ def test_report_builder_errors_on_missing_resolution_by_default(tmp_path):
+     repository = JsonForecastRepository(tmp_path)
+     question = _question("q-unresolved")
+     repository.save_question(question)
++    repository.save_dossier(_dossier(question))
+     repository.save_run(_run(question, probabilities={"yes": 0.7, "no": 0.3}, top_branch="yes"))
+
+     with pytest.raises(ValueError, match="missing resolution for run run-q-unresolved"):
+@@ -207,6 +213,26 @@ def _run(
+     )
+
+
++def _dossier(question: ForecastQuestion) -> EvidenceDossier:
++    return EvidenceDossier(
++        id=f"dossier-{question.id}",
++        question_id=question.id,
++        forecast_as_of=question.forecast_as_of,
++        evidence_items=[
++            EvidenceItem(
++                id=f"e-{question.id}",
++                text="Evidence available as of forecast time.",
++                valid_from=question.forecast_as_of,
++                recorded_from=question.forecast_as_of,
++                source_id="source-1",
++                supports_branch=[question.branches[0].id],
++                supersession_status="current_as_of",
++            )
++        ],
++        compiler="json_evidence.v1",
++    )
++
++
+ def _resolution(question: ForecastQuestion, resolved_branch: str) -> ForecastResolution:
+     return ForecastResolution(
+         id=f"resolution-{question.id}",

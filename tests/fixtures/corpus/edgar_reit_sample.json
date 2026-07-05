@@ -1,0 +1,33 @@
+{
+  "deal_id": "peakstone-brookfield-2026",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.tipranks.com/news/company-announcements/brookfield-completes-peakstone-realty-trust-take-private-acquisition",
+      "published_at": "2026-05-06T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Brookfield completes Peakstone Realty Trust take-private acquisition",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "peakstone-closing-source",
+      "url": "https://www.tipranks.com/news/company-announcements/brookfield-completes-peakstone-realty-trust-take-private-acquisition",
+      "published_at": "2026-05-06T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Brookfield completes Peakstone Realty Trust take-private acquisition",
+      "summary": "Brookfield completed its take-private acquisition of Peakstone Realty Trust, delisting the REIT after closing.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2026-05-06T00:00:00+00:00",
+      "kind": "closed",
+      "description": "Peakstone take-private acquisition closed."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

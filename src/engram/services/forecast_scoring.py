@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Protocol, TypedDict
 
 from engram.models.forecasting import (
+    BeliefUpdate,
     CalibrationSummary,
     ForecastResolution,
     ForecastRun,
@@ -40,6 +41,8 @@ class ForecastScoringRepository(Protocol):
     def list_resolutions(self) -> list[ForecastResolution]: ...
 
     def save_score(self, score: ForecastScore) -> None: ...
+
+    def list_updates(self) -> list[BeliefUpdate]: ...
 
 
 class ForecastScorer:
@@ -332,8 +335,40 @@ def build_calibration_report(
             "scored_run_ids": [score.run_id for score in scores],
             "skipped_run_count": len(skipped_run_ids),
             "skipped_run_ids": skipped_run_ids,
+            "update_quality": build_update_quality_report(repository),
         },
     )
+
+
+def build_update_quality_report(repository: ForecastScoringRepository) -> dict[str, object]:
+    """Report prequential update quality via log-score delta toward resolution."""
+
+    runs_by_id = {run.id: run for run in repository.list_runs()}
+    resolutions_by_question = _resolutions_by_question_id(repository.list_resolutions())
+    rows: list[dict[str, object]] = []
+    for update in repository.list_updates():
+        prior = runs_by_id[update.prior_run_id]
+        posterior = runs_by_id[update.posterior_run_id]
+        resolution = resolutions_by_question.get(prior.question_id)
+        if resolution is None:
+            continue
+        branch = _resolution_branch(resolution)
+        prior_log = log_score(probability_assigned_to_resolved_branch(prior, branch))
+        posterior_log = log_score(probability_assigned_to_resolved_branch(posterior, branch))
+        rows.append({
+            "update_id": update.update_id,
+            "prior_run_id": prior.id,
+            "posterior_run_id": posterior.id,
+            "resolved_branch": branch,
+            "log_score_delta": prior_log - posterior_log,
+            "improved": posterior_log < prior_log,
+        })
+    return {
+        "update_count": len(rows),
+        "improved_count": sum(1 for row in rows if row["improved"]),
+        "mean_log_score_delta": _mean([float(row["log_score_delta"]) for row in rows if isinstance(row["log_score_delta"], int | float)]),
+        "updates": rows,
+    }
 
 
 def _run_probabilities(run: ForecastRun) -> dict[str, float]:

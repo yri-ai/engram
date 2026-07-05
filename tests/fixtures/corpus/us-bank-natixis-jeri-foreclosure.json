@@ -1,0 +1,38 @@
+{
+  "deal_id": "us-bank-natixis-jeri-foreclosure",
+  "source_kind": "courtlistener",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.courtlistener.com/docket/68233956/us-bank-trust-company-national-association-as-trustee-for-the-benefit/",
+      "published_at": "2023-01-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "U.S. Bank Trust v. Natixis Commercial Mortgage Securities Trust 2022-JERI borrower",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.courtlistener.com/docket/68233956/us-bank-trust-company-national-association-as-trustee-for-the-benefit/",
+      "published_at": "2023-01-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "U.S. Bank Trust v. Natixis Commercial Mortgage Securities Trust 2022-JERI borrower",
+      "summary": "CourtListener docket for commercial mortgage trust foreclosure-related litigation.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2023-01-01T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "U.S. Bank Trust v. Natixis Commercial Mortgage Securities Trust 2022-JERI borrower"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: terminated_or_failed."
+    }
+  ],
+  "resolved_branch": "terminated_or_failed",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

@@ -2,10 +2,39 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from dataclasses import asdict, dataclass
+from typing import Any, Protocol
 
 from engram.models.forecasting import EvidenceDossier, ForecastQuestion, ForecastRun
+
+
+class ForecastProtocol(Protocol):
+    """Synchronous forecast protocol seam."""
+
+    def create_run(
+        self,
+        question: ForecastQuestion,
+        dossier: EvidenceDossier,
+        *,
+        run_id: str | None = None,
+        cited_evidence_ids: list[str] | None = None,
+    ) -> ForecastRun: ...
+
+
+class AsyncForecastProtocol(Protocol):
+    """Asynchronous forecast protocol seam for LLM-backed forecasters."""
+
+    async def create_run(
+        self,
+        question: ForecastQuestion,
+        dossier: EvidenceDossier,
+        *,
+        run_id: str | None = None,
+        cited_evidence_ids: list[str] | None = None,
+    ) -> ForecastRun: ...
 
 
 @dataclass(frozen=True)
@@ -185,3 +214,76 @@ class DeterministicForecastProtocol:
             cited = ", ".join(f"[{evidence_id}]" for evidence_id in evidence_ids)
             return f"Deterministic baseline used cited evidence {cited}; missing evidence count: {missing_count}."
         return f"Deterministic baseline used no cited evidence; missing evidence count: {missing_count}."
+
+
+class LLMForecastProtocol:
+    """LLM-assisted forecast protocol using an async JSON-completion provider."""
+
+    protocol = "llm.v1"
+
+    def __init__(self, provider: Any, *, model_name: str = "configured-llm", temperature: float = 0.0) -> None:
+        self.provider = provider
+        self.model_name = model_name
+        self.temperature = temperature
+
+    async def create_run(
+        self,
+        question: ForecastQuestion,
+        dossier: EvidenceDossier,
+        *,
+        run_id: str | None = None,
+        cited_evidence_ids: list[str] | None = None,
+    ) -> ForecastRun:
+        if dossier.question_id != question.id:
+            raise ValueError("dossier question_id must match question id")
+        if dossier.forecast_as_of != question.forecast_as_of:
+            raise ValueError("dossier forecast_as_of must match question forecast_as_of")
+        if dossier.metadata.get("audit_mode"):
+            raise ValueError("dossier was compiled in audit mode and must not be used for forecasting")
+        branch_ids = [branch.id for branch in question.branches]
+        evidence_ids = [item.id for item in dossier.evidence_items]
+        citations = cited_evidence_ids if cited_evidence_ids is not None else evidence_ids
+        DeterministicForecastProtocol._validate_evidence_citations(citations, evidence_ids)
+        prompt = _build_llm_prompt(question, dossier)
+        response = await self.provider.complete_json(prompt)
+        probabilities = response.get("probabilities")
+        rationale = response.get("rationale", "")
+        if not isinstance(probabilities, dict):
+            raise ValueError("LLM forecast response must include probabilities object")
+        probability_payload = {str(key): float(value) for key, value in probabilities.items()}
+        if set(probability_payload) != set(branch_ids):
+            raise ValueError("LLM probabilities must cover exactly the question branches")
+        if any(value < 0.0 or value > 1.0 or not math.isfinite(value) for value in probability_payload.values()):
+            raise ValueError("LLM probabilities must be finite values between 0 and 1")
+        if abs(sum(probability_payload.values()) - 1.0) > 1e-6:
+            raise ValueError("LLM probabilities must sum to 1.0")
+        top_branch = DeterministicForecastProtocol._top_branch(probability_payload)
+        prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
+        return ForecastRun(
+            id=run_id or f"run-{question.id}-{dossier.id}-{self.protocol}",
+            question_id=question.id,
+            dossier_id=dossier.id,
+            forecast_as_of=question.forecast_as_of,
+            branch_ids=branch_ids,
+            probabilities=probability_payload,
+            top_branch=top_branch,
+            protocol=self.protocol,
+            model_name=self.model_name,
+            protocol_config={"model": self.model_name, "temperature": self.temperature, "prompt_hash": prompt_hash},
+            model_config_snapshot={"type": "llm_forecast", "prompt_hash": prompt_hash},
+            evidence_ids=list(dict.fromkeys(citations)),
+            rationale=str(rationale),
+            metadata={"provider_response": response},
+        )
+
+
+def _build_llm_prompt(question: ForecastQuestion, dossier: EvidenceDossier) -> str:
+    return json.dumps(
+        {
+            "task": "Assign calibrated probabilities to each closed forecast branch using only the provided as-of evidence.",
+            "question": question.model_dump(mode="json"),
+            "dossier": dossier.model_dump(mode="json"),
+            "response_schema": {"probabilities": {branch.id: "float" for branch in question.branches}, "rationale": "string"},
+        },
+        sort_keys=True,
+    )

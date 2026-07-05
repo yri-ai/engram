@@ -7,7 +7,7 @@ import json
 import math
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -54,6 +54,7 @@ class ForecastQuestion(BaseModel):
     graph-backed forecast lifecycle shape used by earlier CLI commands.
     """
 
+    schema_version: int = 1
     id: str
     tenant_id: str = "default"
 
@@ -129,6 +130,7 @@ class EvidenceItem(BaseModel):
 class EvidenceDossier(BaseModel):
     """Evidence compiled for one question using only information known as-of."""
 
+    schema_version: int = 1
     id: str
     question_id: str
     forecast_as_of: datetime
@@ -152,6 +154,7 @@ class ForecastRun(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    schema_version: int = 1
     id: str
     question_id: str
     forecast_as_of: datetime
@@ -240,6 +243,8 @@ class ForecastRun(BaseModel):
 class ForecastResolution(BaseModel):
     """Observed outcome for a forecast question/run."""
 
+    schema_version: int = 1
+
     # Temporal kernel / JSON ledger shape.
     id: str | None = None
     question_id: str
@@ -277,6 +282,7 @@ class ForecastResolution(BaseModel):
 class ForecastScore(BaseModel):
     """Stored scoring output for a resolved forecast run."""
 
+    schema_version: int = 1
     id: str | None = None
     run_id: str
     question_id: str
@@ -300,6 +306,7 @@ class ForecastScore(BaseModel):
 class CalibrationSummary(BaseModel):
     """Aggregate calibration metrics over a set of scored forecast runs."""
 
+    schema_version: int = 1
     id: str
     run_count: int = Field(ge=0)
     mean_brier_score: float | None = Field(default=None, ge=0.0)
@@ -308,6 +315,57 @@ class CalibrationSummary(BaseModel):
     buckets: list[dict[str, Any]] = Field(default_factory=list)
     low_sample_warning: bool = False
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+ImpactKind = Literal["avoided_loss", "hit", "miss"]
+
+
+class DecisionRecord(BaseModel):
+    """A persisted decision linked to forecast output provenance."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = 1
+    decision_id: str
+    decided_at: datetime
+    decision_type: str
+    primary_forecast_run_id: str
+    supporting_forecast_run_ids: list[str] = Field(default_factory=list)
+    rationale: str
+    expected_outcome_branch: str
+    realized_outcome_branch: str | None = None
+    impact_value: float | None = None
+    impact_kind: ImpactKind | None = None
+
+
+class BaselineDecisionRecord(BaseModel):
+    """A persisted pre-forecast comparison decision with no forecast links."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = 1
+    decision_id: str
+    decided_at: datetime
+    decision_type: str
+    rationale: str
+    expected_outcome_branch: str
+    realized_outcome_branch: str | None = None
+    impact_value: float | None = None
+    impact_kind: ImpactKind | None = None
+
+
+class BeliefUpdate(BaseModel):
+    """Prequential update linking a prior run to a posterior run and trigger evidence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: int = 1
+    update_id: str
+    prior_run_id: str
+    posterior_run_id: str
+    trigger_evidence_ids: list[str] = Field(default_factory=list)
+    update_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

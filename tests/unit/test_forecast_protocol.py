@@ -164,6 +164,21 @@ def test_protocol_rejects_audit_mode_dossiers():
         DeterministicForecastProtocol().create_run(question, dossier, run_id="run-audit")
 
 
+@pytest.mark.asyncio
+async def test_llm_forecast_protocol_rejects_forecast_as_of_mismatch():
+    from engram.services.forecast_protocol import LLMForecastProtocol
+
+    question = _question([OutcomeBranch(id="yes", label="Yes"), OutcomeBranch(id="no", label="No")])
+    dossier = _dossier(question, [_evidence("e-known", supports_branch=["yes"])]).model_copy(
+        update={"forecast_as_of": LATER}
+    )
+
+    with pytest.raises(ValueError, match="dossier forecast_as_of must match"):
+        await LLMForecastProtocol(_StubLLMProvider(), model_name="mock-model").create_run(
+            question, dossier, run_id="run-llm-mismatch"
+        )
+
+
 def _question(branches: list[OutcomeBranch]) -> ForecastQuestion:
     return ForecastQuestion(
         id="q-protocol",
@@ -210,3 +225,43 @@ def _evidence(
         opposes_branch=opposes_branch or [],
         supersession_status="current_as_of",
     )
+
+
+class _StubLLMProvider:
+    async def complete_json(self, prompt: str):  # type: ignore[no-untyped-def]
+        assert "probabilities" in prompt
+        return {"probabilities": {"yes": 0.8, "no": 0.2}, "rationale": "Mocked forecast."}
+
+
+@pytest.mark.asyncio
+async def test_llm_forecast_protocol_builds_scoreable_run():
+    from engram.services.forecast_protocol import LLMForecastProtocol
+
+    question = _question([OutcomeBranch(id="yes", label="Yes"), OutcomeBranch(id="no", label="No")])
+    dossier = _dossier(question, [_evidence("e-known", supports_branch=["yes"])])
+
+    run = await LLMForecastProtocol(_StubLLMProvider(), model_name="mock-model").create_run(
+        question, dossier, run_id="run-llm"
+    )
+
+    assert run.id == "run-llm"
+    assert run.protocol == "llm.v1"
+    assert run.model_name == "mock-model"
+    assert run.probabilities == {"yes": 0.8, "no": 0.2}
+    assert run.top_branch == "yes"
+    assert run.protocol_config["prompt_hash"]
+
+
+@pytest.mark.asyncio
+async def test_llm_forecast_protocol_rejects_malformed_output():
+    from engram.services.forecast_protocol import LLMForecastProtocol
+
+    question = _question([OutcomeBranch(id="yes", label="Yes"), OutcomeBranch(id="no", label="No")])
+    dossier = _dossier(question, [_evidence("e-known", supports_branch=["yes"])])
+
+    class BadProvider:
+        async def complete_json(self, prompt: str):  # type: ignore[no-untyped-def]
+            return {"probabilities": {"yes": 1.0}}
+
+    with pytest.raises(ValueError, match="cover exactly"):
+        await LLMForecastProtocol(BadProvider()).create_run(question, dossier)

@@ -1,0 +1,38 @@
+{
+  "deal_id": "indus-centerbridge-gic-2023",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1037390/000110465923076131/tm2319986d1_ex99-1.htm",
+      "published_at": "2023-06-29T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "INDUS Realty Trust / Centerbridge GIC acquisition",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1037390/000110465923076131/tm2319986d1_ex99-1.htm",
+      "published_at": "2023-06-29T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "INDUS Realty Trust / Centerbridge GIC acquisition",
+      "summary": "Centerbridge Partners and GIC completed acquisition of INDUS Realty Trust.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2023-06-29T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "INDUS Realty Trust / Centerbridge GIC acquisition"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

@@ -1,0 +1,134 @@
+[
+  {
+    "deal_id": "agridime-receiver-2023",
+    "source_kind": "courtlistener",
+    "resolved_branch": "terminated_or_failed",
+    "url": "https://www.courtlistener.com/docket/68086971/securities-and-exchange-commission-v-agridime-llc/"
+  },
+  {
+    "deal_id": "airc-blackstone-2024",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.blackstone.com/news/press/blackstone-real-estate-completes-privatization-of-air-communities-for-approximately-10-billion/"
+  },
+  {
+    "deal_id": "capital-funding-batavia-foreclosure-2024",
+    "source_kind": "courtlistener",
+    "resolved_branch": "terminated_or_failed",
+    "url": "https://www.courtlistener.com/docket/68213286/capital-funding-llc-v-batavia-llc/"
+  },
+  {
+    "deal_id": "cypress-sport-blx-settlement-2022",
+    "source_kind": "courtlistener",
+    "resolved_branch": "reprice_or_restructure",
+    "url": "https://www.courtlistener.com/docket/63000461/cypress-holdings-iii-lp-v-sport-blx-inc/"
+  },
+  {
+    "deal_id": "peakstone-brookfield-2026",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.tipranks.com/news/company-announcements/brookfield-completes-peakstone-realty-trust-take-private-acquisition"
+  },
+  {
+    "deal_id": "elev8-commercial-investment-2025",
+    "source_kind": "courtlistener",
+    "resolved_branch": "reprice_or_restructure",
+    "url": "https://www.courtlistener.com/docket/71741614/de-la-torre-pardo-v-elev8-commercial-investment-i-llc/"
+  },
+  {
+    "deal_id": "gnl-rtl-merger-2023",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.sec.gov/Archives/edgar/data/1526113/000110465923100026/tm2325830d1_ex99-1.htm"
+  },
+  {
+    "deal_id": "green-mountain-precision-foreclosure",
+    "source_kind": "courtlistener",
+    "resolved_branch": "terminated_or_failed",
+    "url": "https://www.courtlistener.com/docket/59976971/green-mountain-holdings-cayman-ltd-v-precision-pro-contracting/"
+  },
+  {
+    "deal_id": "healthcare-realty-hta-2022",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.marketscreener.com/quote/stock/HEALTHCARE-REALTY-TRUST-12974/news/Healthcare-Realty-Trust-Incorporated-AND-HEALTHCARE-TRUST-OF-AMERICA-ANNOUNCE-CLOSING-OF-MERGER-41037784/"
+  },
+  {
+    "deal_id": "hersha-ksl-merger-2023",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://d18rn0p25nwr6d.cloudfront.net/CIK-0001063344/45acf7a7-ea52-4bf1-a4c0-e8ed6cdda698.html"
+  },
+  {
+    "deal_id": "indus-centerbridge-gic-2023",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.sec.gov/Archives/edgar/data/1037390/000110465923076131/tm2319986d1_ex99-1.htm"
+  },
+  {
+    "deal_id": "kimco-rpt-merger-2024",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://investors.kimcorealty.com/filings-results/sec-filings/content/0001140361-24-000247/ny20017682x1_ex99-1.htm"
+  },
+  {
+    "deal_id": "prologis-duke-merger-2022",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://ir.prologis.com/press-releases/detail/940/prologis-stockholders-and-duke-realty-shareholders-approve"
+  },
+  {
+    "deal_id": "retail-opportunity-kimco-2025",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.sec.gov/Archives/edgar/data/1407623/000119312525001782/d900302ddefm14a.htm"
+  },
+  {
+    "deal_id": "revenue-management-commerce-bank-2025",
+    "source_kind": "courtlistener",
+    "resolved_branch": "reprice_or_restructure",
+    "url": "https://www.courtlistener.com/docket/69688892/revenue-management-solutions-llc-v-commerce-bank/"
+  },
+  {
+    "deal_id": "safehold-istar-merger-2023",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.sec.gov/Archives/edgar/data/1688852/000110465923039699/tm2311045d1_ex99-1.htm"
+  },
+  {
+    "deal_id": "savannah-land-holdings-2025",
+    "source_kind": "courtlistener",
+    "resolved_branch": "reprice_or_restructure",
+    "url": "https://www.courtlistener.com/docket/69521514/united-states-v-savannah-land-holdings-llc/"
+  },
+  {
+    "deal_id": "sec-wells-real-estate-2024",
+    "source_kind": "courtlistener",
+    "resolved_branch": "terminated_or_failed",
+    "url": "https://www.courtlistener.com/docket/69059542/securities-and-exchange-commission-v-wells-real-estate-investment-llc/"
+  },
+  {
+    "deal_id": "spirit-realty-income-2024",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.sec.gov/Archives/edgar/data/726728/000110465924006077/tm243768d1_8k.htm"
+  },
+  {
+    "deal_id": "store-gic-oakstreet-2023",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.businesswire.com/news/home/20230202005925/en/GIC-and-Oak-Street-Complete-$15-Billion-Acquisition-of-STORE-Capital"
+  },
+  {
+    "deal_id": "us-bank-natixis-jeri-foreclosure",
+    "source_kind": "courtlistener",
+    "resolved_branch": "terminated_or_failed",
+    "url": "https://www.courtlistener.com/docket/68233956/us-bank-trust-company-national-association-as-trustee-for-the-benefit/"
+  },
+  {
+    "deal_id": "whitestone-ares-2026",
+    "source_kind": "edgar_reit",
+    "resolved_branch": "advance_or_close",
+    "url": "https://www.trefis.com/data/companies/WSR"
+  }
+]

@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 
 from engram.models.forecasting import (
+    BeliefUpdate,
+    EvidenceDossier,
+    EvidenceItem,
     ForecastQuestion,
     ForecastQuestionType,
     ForecastResolution,
@@ -108,6 +111,7 @@ def test_report_builder_scores_repository_runs_and_warns_on_low_sample(tmp_path)
     run = _run(question, probabilities={"yes": 0.7, "no": 0.3}, top_branch="yes")
     resolution = _resolution(question, resolved_branch="yes")
     repository.save_question(question)
+    repository.save_dossier(_dossier(question))
     repository.save_run(run)
     repository.save_resolution(resolution)
 
@@ -131,6 +135,7 @@ def test_report_builder_buckets_top_branch_confidence_for_calibration(tmp_path):
     run = _run(question, probabilities={"yes": 0.8, "no": 0.2}, top_branch="yes")
     resolution = _resolution(question, resolved_branch="no")
     repository.save_question(question)
+    repository.save_dossier(_dossier(question))
     repository.save_run(run)
     repository.save_resolution(resolution)
 
@@ -146,6 +151,7 @@ def test_report_builder_can_skip_runs_missing_resolution(tmp_path):
     repository = JsonForecastRepository(tmp_path)
     question = _question("q-unresolved")
     repository.save_question(question)
+    repository.save_dossier(_dossier(question))
     repository.save_run(_run(question, probabilities={"yes": 0.7, "no": 0.3}, top_branch="yes"))
 
     report = build_calibration_report(repository, skip_missing_resolutions=True)
@@ -159,11 +165,46 @@ def test_report_builder_errors_on_missing_resolution_by_default(tmp_path):
     repository = JsonForecastRepository(tmp_path)
     question = _question("q-unresolved")
     repository.save_question(question)
+    repository.save_dossier(_dossier(question))
     repository.save_run(_run(question, probabilities={"yes": 0.7, "no": 0.3}, top_branch="yes"))
 
     with pytest.raises(ValueError, match="missing resolution for run run-q-unresolved"):
         build_calibration_report(repository)
 
+
+
+def test_forecasting_metrics_seam_reuses_canonical_scoring_functions():
+    from engram.forecasting.metrics import multiclass_brier_score as seam_brier
+
+    assert seam_brier({"yes": 0.7, "no": 0.3}, "yes") == multiclass_brier_score(
+        {"yes": 0.7, "no": 0.3}, "yes"
+    )
+
+
+def test_calibration_report_includes_update_quality(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question("q-update")
+    prior = _run(question, probabilities={"yes": 0.6, "no": 0.4}, top_branch="yes")
+    posterior = prior.model_copy(update={"id": "run-q-update-posterior", "probabilities": {"yes": 0.8, "no": 0.2}})
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(prior)
+    repository.save_run(posterior)
+    repository.save_resolution(_resolution(question, resolved_branch="yes"))
+    repository.save_update(
+        BeliefUpdate(
+            update_id="update-q",
+            prior_run_id=prior.id,
+            posterior_run_id=posterior.id,
+            trigger_evidence_ids=["e-q-update"],
+            update_at=question.forecast_as_of,
+        )
+    )
+
+    report = build_calibration_report(repository, low_sample_threshold=0)
+
+    assert report.metadata["update_quality"]["update_count"] == 1
+    assert report.metadata["update_quality"]["improved_count"] == 1
 
 def _question(
     question_id: str,
@@ -204,6 +245,26 @@ def _run(
         probabilities=probabilities,
         top_branch=top_branch,
         protocol="deterministic-baseline",
+    )
+
+
+def _dossier(question: ForecastQuestion) -> EvidenceDossier:
+    return EvidenceDossier(
+        id=f"dossier-{question.id}",
+        question_id=question.id,
+        forecast_as_of=question.forecast_as_of,
+        evidence_items=[
+            EvidenceItem(
+                id=f"e-{question.id}",
+                text="Evidence available as of forecast time.",
+                valid_from=question.forecast_as_of,
+                recorded_from=question.forecast_as_of,
+                source_id="source-1",
+                supports_branch=[question.branches[0].id],
+                supersession_status="current_as_of",
+            )
+        ],
+        compiler="json_evidence.v1",
     )
 
 

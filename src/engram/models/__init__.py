@@ -1,8 +1,12 @@
 """Domain models for Engram."""
 
+from engram.models.corpus import CorpusBranchTaxonomy, PublicDeal
 from engram.models.entity import Entity, EntityType
 from engram.models.forecasting import (
+    BaselineDecisionRecord,
+    BeliefUpdate,
     CalibrationSummary,
+    DecisionRecord,
     EvidenceDossier,
     EvidenceItem,
     ForecastQuestion,
@@ -19,7 +23,11 @@ from engram.models.relationship import ExclusivityPolicy, Relationship, Relation
 from engram.models.temporal import EvolutionQuery
 
 __all__ = [
+    "BaselineDecisionRecord",
+    "BeliefUpdate",
+    "CorpusBranchTaxonomy",
     "CalibrationSummary",
+    "DecisionRecord",
     "Entity",
     "EntityType",
     "EvidenceDossier",
@@ -34,6 +42,7 @@ __all__ = [
     "IngestRequest",
     "IngestResponse",
     "OutcomeBranch",
+    "PublicDeal",
     "QuestionStatus",
     "Relationship",
     "RelationshipType",
