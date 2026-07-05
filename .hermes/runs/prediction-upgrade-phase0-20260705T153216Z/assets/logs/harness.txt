@@ -1,0 +1,5 @@
+$ uv run python scripts/data_collection/run_forecast_harness.py --fixture track_b_synthetic --models baseline,hazard,gbm
+exit=0
+
+warning: `VIRTUAL_ENV=/home/leo/.hermes/hermes-agent/venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+{"gate_6": {"baseline_brier": 0.4375, "baseline_brier_matches_expected": true, "expected_baseline_brier": 0.4375, "gbm_on_board": true, "hazard_on_board": true, "leakage_canary_passed": true, "local_ginnie_events_present": false, "status": "PASS"}, "input_rows": 15}

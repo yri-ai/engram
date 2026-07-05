@@ -1,0 +1,30 @@
+$ git status --short --branch && git log --oneline -3 && git diff --stat master..HEAD
+exit=0
+
+## wf/prediction-upgrade-phase0
+?? .worktree/
+32698ca feat: add phase 0 forecast harness
+9f82600 docs: harden prediction upgrade execution plan
+a8a1720 docs: fix forecast lifecycle m7-m8 plan
+ .../2026-07-04-prediction-upgrade-execution.md     |   32 +-
+ docs/plans/decisions/track-b-gate-6-decision.md    |   82 +-
+ pyproject.toml                                     |   22 +
+ scripts/data_collection/run_forecast_harness.py    |  325 ++++++
+ src/engram/forecasting/__init__.py                 |    6 +
+ src/engram/forecasting/baselines.py                |  200 ++++
+ src/engram/forecasting/canary.py                   |  113 +++
+ src/engram/forecasting/fixtures.py                 |   36 +
+ src/engram/forecasting/metrics.py                  |  177 ++++
+ src/engram/forecasting/protocol.py                 |   52 +
+ src/engram/forecasting/splits.py                   |  103 ++
+ .../track_b/track_b_synthetic_baseline.json        |   15 +
+ .../fixtures/track_b/track_b_synthetic_rows.jsonl  |   15 +
+ tests/unit/test_forecasting_baselines.py           |   60 ++
+ tests/unit/test_forecasting_canary.py              |   47 +
+ tests/unit/test_forecasting_harness.py             |   79 ++
+ tests/unit/test_forecasting_metrics.py             |   69 ++
+ tests/unit/test_forecasting_prerequisites.py       |   92 ++
+ tests/unit/test_forecasting_protocol.py            |   45 +
+ tests/unit/test_forecasting_splits.py              |  116 +++
+ uv.lock                                            | 1051 +++++++++++++++++++-
+ 21 files changed, 2659 insertions(+), 78 deletions(-)
