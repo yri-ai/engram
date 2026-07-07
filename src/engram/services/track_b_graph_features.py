@@ -10,6 +10,7 @@ to pull graph-derived features (entity counts, relationship types, etc.).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -81,3 +82,47 @@ def extract_features_from_event_history(
         features["state"] = current.state
 
     return features
+
+
+def graph_features(loan_id: str, as_of: str, driver: Any) -> dict[str, Any]:
+    """Return record-time-safe graph-derived features for a loan neighborhood.
+
+    ``driver`` is a test seam: it may expose ``edges`` as dictionaries with
+    ``head``, ``rel``, ``tail`` and ``recorded_from`` fields. Live Neo4j callers
+    can wrap query results into that shape without making this helper perform I/O.
+    """
+    edges = getattr(driver, "edges", []) if driver is not None else []
+    as_of_dt = _parse_record_time(as_of)
+    visible = [
+        edge
+        for edge in edges
+        if _parse_record_time(str(edge.get("recorded_from", "9999-12-31"))) <= as_of_dt
+    ]
+    neighborhood = [
+        edge for edge in visible if edge.get("head") == loan_id or edge.get("tail") == loan_id
+    ]
+    rel_counts: dict[str, int] = {}
+    supersession_count = 0
+    entities: set[str] = set()
+    for edge in neighborhood:
+        rel = str(edge.get("rel", "unknown"))
+        rel_counts[rel] = rel_counts.get(rel, 0) + 1
+        supersession_count += int("supersed" in rel)
+        entities.add(str(edge.get("head")))
+        entities.add(str(edge.get("tail")))
+    features: dict[str, Any] = {
+        "graph_entity_degree": max(len(entities) - 1, 0),
+        "graph_supersession_count": supersession_count,
+    }
+    features.update({f"graph_rel_count_{rel}": count for rel, count in sorted(rel_counts.items())})
+    return features
+
+
+def _parse_record_time(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    if "T" not in normalized:
+        normalized = f"{normalized}T23:59:59+00:00"
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed

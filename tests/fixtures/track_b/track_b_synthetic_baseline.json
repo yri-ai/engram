@@ -1,0 +1,15 @@
+{
+  "brier_score": 0.4375,
+  "classes": [
+    "current",
+    "d30",
+    "d60",
+    "d90",
+    "d90_plus",
+    "reo"
+  ],
+  "fixture": "track_b_synthetic",
+  "model": "BaselineForecaster",
+  "sample_count": 4,
+  "top1_accuracy": 0.5
+}

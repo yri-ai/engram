@@ -15,6 +15,11 @@ class RelationshipType(StrEnum):
     MENTIONED_WITH = "mentioned_with"
     HAS_GOAL = "has_goal"
     RELATES_TO = "relates_to"
+    LOAN_IN_POOL = "loan_in_pool"
+    LOAN_IN_DEAL = "loan_in_deal"
+    TRANSITIONS_TO = "transitions_to"
+    HAS_STATE = "has_state"
+    OBSERVED_IN_MONTH = "observed_in_month"
 
 
 class Evidence(BaseModel):

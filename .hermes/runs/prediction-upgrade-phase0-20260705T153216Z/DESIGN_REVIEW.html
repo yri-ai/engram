@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>DESIGN REVIEW — Phase 0 Forecast Harness</title>
+<style>
+body{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;margin:32px;line-height:1.45;color:#17202a;background:#fbfbfd}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;font-weight:700;color:white;background:#12805c}.fail{background:#b00020}.partial{background:#8a5a00}
+.card{background:white;border:1px solid #dde3ea;border-radius:12px;padding:18px;margin:18px 0;box-shadow:0 1px 2px #0001} table{border-collapse:collapse;width:100%;background:white}td,th{border:1px solid #dde3ea;padding:8px;text-align:left}th{background:#eef3f8}code,pre{background:#f4f6f8;border-radius:6px}pre{padding:12px;overflow:auto}.small{color:#5b6773;font-size:0.9em}a{color:#0b62a3}
+</style>
+</head><body><h1>DESIGN REVIEW — Phase 0 Forecast Harness</h1><p><span class="badge ">PASS</span> <span class="small">run prediction-upgrade-phase0-20260705T153216Z</span></p>
+<div class="card"><h2>Review verdict</h2><p>The design maps directly to the execution plan and preserves key invariants: no forecast head without scoreboard entry, record-time filtering, and reproducible checked-in Gate 6 data.</p></div>
+<div class="card"><h2>Checks</h2><table><tr><th>Check</th><th>Status</th><th>Notes</th></tr><tr><td>Module boundary</td><td>PASS</td><td>Forecasting subsystem isolated under <code>src/engram/forecasting</code>.</td></tr><tr><td>Leakage control</td><td>PASS</td><td>Record-time filter and canaries exist.</td></tr><tr><td>Dependency risk</td><td>PASS</td><td>Optional deps are lazy and tests skip if extra missing.</td></tr><tr><td>Fixture reproducibility</td><td>PASS</td><td>Checked-in fixture and expected baseline artifact.</td></tr></table></div>
+<script type="application/json" id="report-metadata">{"phase": "design_review", "status": "PASS", "runId": "prediction-upgrade-phase0-20260705T153216Z", "worktree": "/home/leo/dev/projects/engram/.worktree/prediction-upgrade-phase0", "generatedAt": "2026-07-05T15:34:01.346786+00:00"}</script></body></html>
