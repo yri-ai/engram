@@ -1,0 +1,24 @@
+$ git diff --name-status master..HEAD
+exit=0
+
+M	docs/plans/2026-07-04-prediction-upgrade-execution.md
+M	docs/plans/decisions/track-b-gate-6-decision.md
+M	pyproject.toml
+A	scripts/data_collection/run_forecast_harness.py
+A	src/engram/forecasting/__init__.py
+A	src/engram/forecasting/baselines.py
+A	src/engram/forecasting/canary.py
+A	src/engram/forecasting/fixtures.py
+A	src/engram/forecasting/metrics.py
+A	src/engram/forecasting/protocol.py
+A	src/engram/forecasting/splits.py
+A	tests/fixtures/track_b/track_b_synthetic_baseline.json
+A	tests/fixtures/track_b/track_b_synthetic_rows.jsonl
+A	tests/unit/test_forecasting_baselines.py
+A	tests/unit/test_forecasting_canary.py
+A	tests/unit/test_forecasting_harness.py
+A	tests/unit/test_forecasting_metrics.py
+A	tests/unit/test_forecasting_prerequisites.py
+A	tests/unit/test_forecasting_protocol.py
+A	tests/unit/test_forecasting_splits.py
+M	uv.lock

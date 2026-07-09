@@ -5,7 +5,7 @@
 **Companion to:** `docs/plans/2026-07-04-prediction-upgrade-roadmap.md` (the "why" and research grounding)
 **This document:** the "how" — task-by-task, grounded in the current codebase.
 
-**Tech Stack:** Python 3.11+ | uv | pytest | Pydantic v2 | Neo4j | LiteLLM | numpy (+ new optional deps per phase)
+**Tech Stack:** Python 3.11+ | uv | pytest | Pydantic v2 | Neo4j | LiteLLM | numpy (+ optional extras created in Task 0.1)
 
 ---
 
@@ -21,10 +21,12 @@
 | H2 context profiles | `src/engram/services/h2_context.py::profile_schema_guided`, `compute_evidence_gaps`, `compute_competing_cause_discrimination` | Context budgeting + flip-condition output for LLM head |
 | H4 pruning | `src/engram/services/h4_symbolic.py::prune_predictions` | Consistency check on LLM head outputs (Gate 5 said: re-test when LLM models arrive) |
 | H5 transfer harness | `scripts/data_collection/run_h5_transfer.py` | Reused for cross-asset-class transfer tests |
-| Data + fetchers | `data/{ginnie,fannie,edgar,dbrs}`, `scripts/data_collection/fetch_*.py` | Phase 4 extends with ABS-EE + remittance ingestion |
+| Data + fetchers | ignored local `data/` / `outputs/`, `scripts/data_collection/fetch_*.py` | Phase 4 extends fetchers; Phase 0 must create checked-in synthetic fixtures because raw data is not repo state |
 | Test conventions | `tests/unit/test_track_b_*.py`, pytest via uv, ruff/mypy | Every task ships tests in the same pattern |
 
-**Structural decision:** new subpackage `src/engram/forecasting/` for the prediction subsystem (the `services/` flat namespace is already 25+ modules; forecasting is becoming a system, not a service). `services/track_b_forecasting.py` re-exports for backward compatibility until Phase 2 completes.
+**Structural decision:** new subpackage `src/engram/forecasting/` for the prediction subsystem (the `services/` flat namespace is already 25+ modules; forecasting is becoming a system, not a service). `src/engram/services/track_b_forecasting.py` re-exports for backward compatibility until Phase 2 completes.
+
+**Shared ownership with lifecycle M7:** this plan owns the first production of `src/engram/forecasting/metrics.py` if Phase 0 lands before M7 Task 5. If M7 lands first, Phase 0 imports/re-exports the canonical metrics module instead of adding another implementation. There must be exactly one multiclass Brier/ECE implementation after both plans land.
 
 **Dependency policy:** heavy ML deps go in new optional groups so the core stays light:
 
@@ -36,13 +38,20 @@ forecast-graph = ["torch>=2.4", "torch-geometric>=2.6"]
 forecast-conformal = ["crepes>=0.7"]  # or MAPIE; decide in Task 5.1
 ```
 
-Install per phase: `uv sync --extra forecast` etc. CI runs core tests always, extras-gated tests behind markers (`@pytest.mark.forecast_tfm`, registered in `pyproject.toml`).
+Install per phase: `uv sync --extra forecast` etc. CI runs core tests always, extras-gated tests behind markers (`@pytest.mark.forecast_tfm`, registered in `pyproject.toml` by Task 0.1).
+
+### Task 0.1: Project prerequisites, fixtures, and dependency gates
+- Update `pyproject.toml` with optional dependency groups `forecast`, `forecast-tfm`, `forecast-graph`, and `forecast-conformal`, plus pytest markers `slow`, `forecast`, `forecast_tfm`, `forecast_graph`, and `forecast_conformal`.
+- Create a checked-in deterministic Track B fixture under `tests/fixtures/track_b/` with enough rows to exercise train/eval/holdout, rare transitions, and a future-recorded feature canary. This fixture is synthetic and small; it is not derived from ignored local `data/`.
+- Create a checked-in expected-baseline artifact for that fixture (Brier, top-1, class list) so Gate 6 can be verified without `outputs/track_b/events.ndjson`.
+- Harness preflight: `run_forecast_harness.py` must accept either `--events PATH` or `--fixture track_b_synthetic`. If a local `outputs/track_b/events.ndjson` is missing, the command fails with instructions instead of silently weakening Gate 6.
+- **Tests:** marker registration has no pytest warnings; fixture loader produces canonical rows; baseline fixture Brier is reproducible to ±0.001.
 
 ---
 
-## Phase 0 — Evaluation Harness & Scoreboard (Tasks 0.1–0.6, ~2 weeks)
+## Phase 0 — Evaluation Harness & Scoreboard (Tasks 0.1–0.7, ~2 weeks)
 
-### Task 0.1: Forecaster protocol + package scaffold
+### Task 0.2: Forecaster protocol + package scaffold
 - Create `src/engram/forecasting/__init__.py`, `src/engram/forecasting/protocol.py`:
 
 ```python
@@ -52,39 +61,39 @@ class Forecaster(Protocol):
     def predict_proba(self, features: dict[str, Any]) -> dict[str, float]: ...  # bucket -> prob
 ```
 
-- Adapter wrapping existing `BaselineForecaster` (its `predict()["probabilities"]` already matches).
-- **Tests:** `tests/unit/test_forecasting_protocol.py` — adapter conforms; probabilities sum to 1; all `DelinquencyBucket` values covered.
+- Adapter wrapping existing `BaselineForecaster`. The adapter must pad/renormalize probabilities to the full `DelinquencyBucket` enum because the current `BaselineForecaster.fit()` narrows classes to labels observed in training.
+- **Tests:** `tests/unit/test_forecasting_protocol.py` — adapter conforms; probabilities sum to 1; all `DelinquencyBucket` values are present even when the training set lacks rare buckets.
 
-### Task 0.2: Metrics module
+### Task 0.3: Metrics module
 - `src/engram/forecasting/metrics.py`: multiclass Brier (move logic out of `BaselineForecaster.backtest`), log-loss, top-1 accuracy, ECE (10-bin), reliability-curve data, one-vs-rest AUC per transition, and `loss_weighted_error` with a cost matrix (config-driven; default: cost ∝ bucket distance, `current→d90_plus` most expensive).
 - Pure numpy; no new deps.
 - **Tests:** `test_forecasting_metrics.py` — known-answer tests (hand-computed Brier/ECE on 3-row fixtures), degenerate cases (single class, empty).
 
-### Task 0.3: Walk-forward splitter + record-time replay
+### Task 0.4: Walk-forward splitter + record-time replay
 - `src/engram/forecasting/splits.py`:
-  - `walk_forward_windows(rows, n_windows, step_months)` → list of (train, eval) row sets by `as_of`; delegates leakage checks to existing `validate_no_leakage`.
-  - `record_time_filter(rows, as_of)` — for graph-sourced rows, drop any feature derived from events with `recorded_from > as_of`. For current NDJSON rows this is `as_of`-based; the graph path lands in Task 2.1. Interface defined now so every head builds against it.
+  - `walk_forward_windows(rows, n_windows, step_months)` → list of (train, eval) row sets by `as_of`. It must copy rows before assigning split labels; do not call mutable `assign_splits()` on shared row objects across windows. Run `validate_no_leakage` on each copied window.
+  - `record_time_filter(rows, as_of)` — drop any feature or context item whose provenance has `recorded_from > as_of`. Add a canonical `feature_provenance` shape (`feature_name -> [{source_id, recorded_from}]`) used by all heads. Current Track B rows default `recorded_from = as_of`; the Task 0.1 synthetic fixture includes a poisoned future-recorded feature to prove the filter works before graph export exists.
   - Origination-cohort splitter (by first-seen year) for vintage-shift evaluation.
-- **Tests:** `test_forecasting_splits.py` — window boundaries exact; a row never appears in its own training window; cohort splits partition cleanly.
+- **Tests:** `test_forecasting_splits.py` — window boundaries exact; source rows are not mutated; a row never appears in its own training window; cohort splits partition cleanly; future-recorded feature is removed while same-row `as_of` features remain.
 
-### Task 0.4: Leakage canary
-- `src/engram/forecasting/canary.py`: `run_leakage_canary(forecaster_factory, rows)` — clones the dataset, injects the *label* into a feature column, retrains; asserts score improves massively (canary detects that the harness *would* catch leakage), then runs the real dataset with shuffled-future features and asserts score does **not** improve.
+### Task 0.5: Leakage canary
+- `src/engram/forecasting/canary.py`: `run_leakage_canary(forecaster_factory, rows)` — clones the dataset, injects the *label* into a feature column, retrains; asserts score improves massively (canary detects that the harness *would* catch leakage), then runs the checked-in fixture and any optional local dataset with shuffled-future features and asserts score does **not** improve.
 - Wire into CI as `@pytest.mark.slow`.
 - **Tests:** canary flags a deliberately leaky forecaster fixture; passes the honest baseline.
 
-### Task 0.5: Baseline ladder
+### Task 0.6: Baseline ladder
 - `src/engram/forecasting/baselines.py`:
   - `HazardForecaster` — discrete-time multinomial logistic hazard (sklearn `LogisticRegression`, features from `extract_features_from_event_history`).
   - `GBMForecaster` — LightGBM multiclass with modest fixed hyperparameters + one tuned config (document the search).
 - Requires `--extra forecast`.
 - **Tests:** `test_forecasting_baselines.py` — both conform to protocol; beat uniform on synthetic data with known transition structure; deterministic under fixed seed.
 
-### Task 0.6: Harness runner + scoreboard artifact
+### Task 0.7: Harness runner + scoreboard artifact
 - `scripts/data_collection/run_forecast_harness.py`: runs N registered forecasters over walk-forward windows, emits `outputs/results/forecast_scoreboard_v{n}.json` (per-model, per-window, per-metric + calibration curves) and a markdown summary table.
 - Registry pattern: `--models baseline,hazard,gbm`.
-- **Gate 6 artifact:** scoreboard on frozen Ginnie fixture reproduces the existing `track_b_forecast_v1.json` Brier for `baseline` within ±0.001; canary green. Write `docs/plans/decisions/track-b-gate-6-decision.md`.
+- **Gate 6 artifact:** scoreboard on the checked-in Task 0.1 synthetic fixture reproduces its committed baseline Brier within ±0.001; if local Ginnie `outputs/track_b/events.ndjson` exists, also compare against `outputs/results/track_b_forecast_v1.json`. Canary green is mandatory in both modes. Write `docs/plans/decisions/track-b-gate-6-decision.md`.
 
-**Exit criteria Phase 0:** `uv run pytest tests/unit -q` green; scoreboard runs end-to-end on existing `events.ndjson`; GBM and hazard numbers on the board.
+**Exit criteria Phase 0:** `uv run pytest tests/unit -q` green; scoreboard runs end-to-end on the checked-in fixture; optional local Ginnie run documented when data exists; GBM and hazard numbers on the board.
 
 ---
 
@@ -108,7 +117,7 @@ class Forecaster(Protocol):
 - **Tests:** student Brier within ε of teacher on held-out synthetic data.
 
 ### Task 1.5: Graph-feature ablation + Gate 7
-- Extend `track_b_graph_features.py` with the docstring's promised graph-derived features (entity degree, relationship-type counts, supersession counts for the loan's neighborhood) behind `graph_features(loan_id, as_of, driver)` — record-time filtered via Task 0.3 interface.
+- Extend `track_b_graph_features.py` with the docstring's promised graph-derived features (entity degree, relationship-type counts, supersession counts for the loan's neighborhood) behind `graph_features(loan_id, as_of, driver)` — record-time filtered via Task 0.4 interface.
 - Harness run: `{tfm, tfm+graph_features, gbm, gbm+graph_features}` × walk-forward.
 - **Gate 7 artifact + decision doc:** TFM beats tuned GBM on walk-forward Brier; graph features ≥3% relative Brier improvement. Kill/rescope rules as in roadmap §Phase 1.
 
@@ -121,14 +130,21 @@ class Forecaster(Protocol):
 - Export format: torch-geometric-ready NDJSON + entity/relation vocab files under `outputs/graph_exports/`.
 - **Tests:** `test_graph_export.py` — synthetic graph fixture: a fact recorded after `as_of` never appears; supersession chains export correctly.
 
+### Task 2.1a: Graph event schema and migration/backfill plan
+- Extend `RelationshipType` and any API serialization tests with additive Track B graph vocabulary: `loan_in_pool`, `loan_in_deal`, `transitions_to`, `has_state`, and `observed_in_month` (exact names finalized in the red test). Keep existing conversation relationship types backward compatible.
+- Define deterministic entity IDs using the existing `Entity.build_id(tenant, EntityType.CONCEPT, canonical, group_id=...)` scheme for loans, pools, deals, and bucket states. Document canonical name normalization so ingestion and export agree.
+- Migration/backfill: no destructive Neo4j migration. The backfill script writes new relationships into a dedicated `conversation_id="track-b-native"` / `group_id="track-b"` namespace and records a manifest. Rollback is deleting that namespace or restoring the pre-backfill database snapshot; existing text-ingested events are untouched.
+- **Tests:** enum/API round-trip for new relationship types; backfill fixture creates deterministic IDs; rollback manifest identifies every created node/relationship.
+
 ### Task 2.2: Track B events into the graph
 - `scripts/data_collection/ingest_track_b_events.py` already exists — extend to write loan→pool→state-transition edges natively (currently events are text-ingested). Deterministic IDs per existing `{tenant}:{group}:{type}:{name}` scheme.
 - **Tests:** idempotent re-ingest (existing Redis dedup path); edge counts match event counts on fixture.
 
-### Task 2.3: ULTRA head
+### Task 2.3: Graph heads — ULTRA and temporal GNN candidates
 - `src/engram/forecasting/graph_head.py`: `UltraForecaster` — load pretrained ULTRA checkpoint (via `forecast-graph` extra + vendored inference wrapper), zero-shot link prediction scores for `(loan, transitions_to, bucket_state)` candidate edges → normalized to protocol probabilities. Fine-tune variant flag.
-- Evaluate against a temporal-GNN alternative only if zero-shot shows signal (cheap-first sequencing).
-- **Tests:** protocol conformance on exported fixture graph; scores vary with graph structure (ablate edges → scores move).
+- Same module or `src/engram/forecasting/temporal_gnn.py`: `TemporalGNNForecaster` — minimal entity-state temporal GNN baseline over the exported edge snapshots.
+- Evaluate both candidates against each other unless a checkpoint/license incompatibility blocks one; any skip is a Gate 8 precondition decision with explicit rationale, not silent rescope.
+- **Tests:** protocol conformance on exported fixture graph; scores vary with graph structure (ablate edges → scores move); temporal split prevents future edges from entering either head.
 
 ### Task 2.4: Ensemble v1 + Gate 8
 - `src/engram/forecasting/ensemble.py`: `LinearPoolEnsemble` (weighted log-linear pool, weights fit on validation window) over registered heads.
@@ -146,8 +162,9 @@ Builds on `docs/plans/2026-04-01-branch-forecasting-v0.md` scaffolding and exist
 - **Tests:** schema validation; branch enumeration matches `DelinquencyBucket` × horizon.
 
 ### Task 3.2: Evidence assembly (H1+H2 reuse)
-- `src/engram/forecasting/evidence.py`: `assemble_evidence(loan_id, as_of, budget)` — `induce_motifs` output selects motif-relevant events; `profile_schema_guided` + budget enforcement shapes the context; returns structured evidence with graph provenance (message_ids).
-- **Tests:** budget respected; distractor fixture (from H2 test patterns) excluded by schema-guided profile.
+- `src/engram/forecasting/evidence.py`: `assemble_evidence(loan_id, as_of, budget, motif_library)` — a motif library induced only from prior training windows selects motif-relevant events; `profile_schema_guided` + budget enforcement shapes the context; returns structured evidence with graph provenance (message_ids).
+- `assemble_evidence` must not call `induce_motifs` on the full event stream at prediction time. All event/context inputs pass through `record_time_filter` before selection.
+- **Tests:** budget respected; distractor fixture (from H2 test patterns) excluded by schema-guided profile; poisoned future event cannot affect selected evidence or probabilities.
 
 ### Task 3.3: LLM rollout engine with test-time compute budget
 - `src/engram/forecasting/llm_branch.py`: `LLMBranchForecaster(compute_budget)` — particle-style parallel rollouts via LiteLLM (existing provider config in `config/`), each rollout scores branches; aggregation across particles → branch distribution. Budget knob = n_particles × max_depth; log tokens/cost per prediction into the scoreboard artifact.
@@ -171,14 +188,17 @@ Builds on `docs/plans/2026-04-01-branch-forecasting-v0.md` scaffolding and exist
 ## Phase 4 — Deal Track (Tasks 4.1–4.7, ~6–10 weeks; 4.1 starts right after Phase 0)
 
 ### Task 4.1: ABS-EE + remittance fetchers
-- `scripts/data_collection/fetch_edgar_absee.py` (pattern-match existing `fetch_edgar_cmbs.py`): Reg AB II loan-level EX-102 exhibits → `data/edgar/absee/`; manifest entries in `data/manifests/` (existing convention).
+- Create a manifest convention first: every new fetcher writes raw files under ignored `data/...` and a JSONL manifest with `{source, source_url, retrieved_at, sha256, local_path}`. Existing fetchers use per-file `.meta.json`; do not assume `data/manifests/` already exists.
+- `scripts/data_collection/fetch_edgar_absee.py` (pattern-match existing `fetch_edgar_cmbs.py`): Reg AB II loan-level EX-102 exhibits → `data/edgar/absee/`; write manifest entries using the new convention.
 - Remittance/trustee report parser for trigger states → `src/engram/services/deal_remit_parser.py` (pattern: `track_b_payhist_parser.py`).
-- **Tests:** parser golden-file tests on 2–3 real filings checked into `tests/fixtures/`.
+- DBRS rating-transition parser → `src/engram/services/dbrs_rating_parser.py`: PDFs/metadata from `fetch_dbrs.py` or curated fixture text → structured `{deal_id, tranche_id, rating_from, rating_to, action_at, source_id}` targets for Gate 10. The parser must make the existing DBRS fetcher scoreable; downloading reports alone is not enough.
+- **Tests:** parser golden-file tests on checked-in sample filings/text snippets in `tests/fixtures/`; DBRS parser emits hand-verified rating transition labels.
 
 ### Task 4.2: Deal spec schema
-- `src/engram/models/deal.py`: Pydantic — `DealSpec`, `Tranche` (balance, coupon, seniority), `Trigger` (OC/IC, formula AST, threshold), `Covenant`, `WaterfallStep` (ordered payment rules as a restricted expression language, NOT free Python).
-- Bitemporal storage: deal specs are versioned graph objects; amendments supersede via the existing fact-supersession machinery.
-- **Tests:** `test_deal_models.py` — round-trip serialization; formula AST rejects unsafe expressions.
+- `src/engram/models/deal.py`: Pydantic — `DealSpec` (`schema_version`, `spec_id`, `deal_id`, `valid_from`, `recorded_from`, `supersedes_spec_id`, `verified`, `verified_by`, `verified_at`, `source_ids`), `Tranche` (balance, coupon, seniority), `Trigger` (OC/IC, formula AST, threshold), `Covenant`, `WaterfallStep` (ordered payment rules as a restricted expression language, NOT free Python).
+- `src/engram/services/deal_repository.py`: persist deal specs as graph facts with `fact_key="deal.spec"`, immutable by `spec_id`; amendments create a new spec whose `supersedes_spec_id` points backward. Reads use `recorded_from <= as_of` and latest non-superseded-as-of semantics.
+- Migration/rollback: additive only. Backfill writes `deal.spec` facts in a dedicated namespace and manifest. Rollback deletes the backfill namespace or repoints to the prior JSON ledger; no in-place mutation of existing facts.
+- **Tests:** `test_deal_models.py` — round-trip serialization; formula AST rejects unsafe expressions; unverified specs are rejected by the simulator; repository returns the correct as-of version; rollback manifest covers created facts.
 
 ### Task 4.3: Waterfall simulator
 - `src/engram/forecasting/waterfall.py`: `simulate(deal_spec, collateral_cashflows) -> DealOutcome` (tranche cashflows, trigger states, covenant pass/fail per period). Pure, deterministic, no I/O.
@@ -187,6 +207,7 @@ Builds on `docs/plans/2026-04-01-branch-forecasting-v0.md` scaffolding and exist
 
 ### Task 4.4: Deal-doc extraction pipeline
 - `src/engram/forecasting/deal_extract.py`: LLM extraction (LiteLLM, prompts in `config/prompts/deal/`) from offering docs → `DealSpec` candidates with per-field confidence + source spans. Human verification: emit a review markdown per deal (`outputs/deal_review/{deal_id}.md`) — approved specs get `verified: true` before the simulator will accept them (hard check).
+- Verification path: approval is a repository write (`deal-spec-approve` CLI or equivalent test seam) that records `verified_by` and `verified_at`; editing markdown alone never changes simulator behavior.
 - **Metric:** field-level extraction accuracy on a 10-deal hand-labeled set. Gate on ≥95% for waterfall-critical fields (tranche sizes, trigger thresholds).
 - **Tests:** mocked-LLM parse tests; simulator refuses unverified specs.
 
@@ -213,8 +234,9 @@ Builds on `docs/plans/2026-04-01-branch-forecasting-v0.md` scaffolding and exist
 - **Tests:** empirical coverage on synthetic data within [target − 2%, target + 2%] over 1000 trials; weighted variant maintains coverage under injected covariate shift.
 
 ### Task 5.2: Prediction output contract
-- `src/engram/forecasting/output.py`: `PredictionReport` Pydantic model — calibrated probs, conformal set, evidence chain (graph message_ids), flip conditions (`compute_evidence_gaps` reuse), model attribution (which heads, what weights), cost. This is the single public output type; API endpoint `POST /forecast` in the FastAPI app returns it.
-- **Tests:** contract completeness; API integration test in `tests/integration/`.
+- `src/engram/forecasting/output.py`: `PredictionReport` Pydantic model — calibrated probs, conformal set, evidence chain (graph message_ids), flip conditions (`compute_evidence_gaps` reuse), model attribution (which heads, what weights), cost. This is the single public output type for harness artifacts and future API consumers.
+- Do **not** add a FastAPI endpoint in this plan. The forecast API belongs to the adoption/API work after lifecycle Layer 2 closes; when it lands, it must be `POST /v1/forecast` and return this `PredictionReport` contract.
+- **Tests:** contract completeness; no API integration test in this plan unless the adoption/API plan is explicitly pulled in.
 
 ### Task 5.3: Drift & calibration monitoring
 - Extend harness with rolling-window ECE/coverage tracking; `scripts/data_collection/run_calibration_audit.py` emits quarterly gate-style report to `docs/plans/decisions/` (auto-drafted, human-approved).
@@ -226,7 +248,7 @@ Builds on `docs/plans/2026-04-01-branch-forecasting-v0.md` scaffolding and exist
 
 1. **TDD in repo style:** every task lands `tests/unit/test_*.py` first, `uv run pytest tests/unit -q` green before merge; `ruff` + `mypy` clean (existing configs).
 2. **No head without a scoreboard entry.** A model that isn't registered in the harness doesn't exist.
-3. **Record-time discipline:** any feature or context assembled for a prediction at `as_of` must pass through `record_time_filter` (Task 0.3). Code review checklist item.
+3. **Record-time discipline:** any feature or context assembled for a prediction at `as_of` must pass through `record_time_filter` (Task 0.4). Code review checklist item.
 4. **Gate decision docs** in `docs/plans/decisions/track-b-gate-{n}-decision.md`, same format as gates 1–5 (thresholds, observed, kill-condition check, direction change).
 5. **Artifacts** to `outputs/results/*.json`, versioned suffix, `generated_at` stamped (existing convention).
 6. **Cost tracking:** every LLM-touching component logs tokens + $ into its artifact. Gate 9/10 decisions require the cost column.
@@ -236,8 +258,11 @@ Builds on `docs/plans/2026-04-01-branch-forecasting-v0.md` scaffolding and exist
 ```bash
 uv sync
 uv run pytest tests/unit -q                      # confirm green baseline
-mkdir -p src/engram/forecasting
-# Task 0.1: protocol + adapter + tests
+uv run ruff check src tests scripts
+uv run mypy src
+# Task 0.1: optional deps, markers, checked-in fixture, expected baseline
+uv run pytest tests/unit/test_forecasting_prerequisites.py -q
+# Task 0.2: protocol + adapter + tests after 0.1 is green
 uv run pytest tests/unit/test_forecasting_protocol.py -q
 ```
 
