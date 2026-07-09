@@ -49,7 +49,9 @@ def build_impact_report(
         if baseline_window.contains(decision.decided_at)
     ]
     forecast_records = [
-        decision for decision in repository.list_decisions() if measure_window.contains(decision.decided_at)
+        decision
+        for decision in repository.list_decisions()
+        if measure_window.contains(decision.decided_at)
     ]
     baseline_metrics = _baseline_metrics(baseline_records)
     forecast_metrics = _forecast_linked_metrics(repository, forecast_records)
@@ -76,14 +78,17 @@ def build_impact_report(
             "hit_rate_delta": None
             if baseline_hit_rate is None or forecast_hit_rate is None
             else forecast_hit_rate - baseline_hit_rate,
-            "avoided_loss_delta": forecast_metrics["avoided_loss"] - baseline_metrics["avoided_loss"],
+            "avoided_loss_delta": forecast_metrics["avoided_loss"]
+            - baseline_metrics["avoided_loss"],
         },
     }
 
 
 def _baseline_metrics(records: list[BaselineDecisionRecord]) -> dict[str, Any]:
     resolved = [record for record in records if record.realized_outcome_branch is not None]
-    hits = sum(1 for record in resolved if record.expected_outcome_branch == record.realized_outcome_branch)
+    hits = sum(
+        1 for record in resolved if record.expected_outcome_branch == record.realized_outcome_branch
+    )
     return _metrics_payload(records, resolved_count=len(resolved), hits=hits)
 
 

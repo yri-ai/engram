@@ -312,7 +312,9 @@ def test_save_decision_rejects_expected_branch_outside_primary_question(tmp_path
     repository.save_run(_run(question))
     decision = _decision().model_copy(update={"expected_outcome_branch": "maybe"})
 
-    with pytest.raises(ValueError, match="expected outcome branch must be one of the primary question branches"):
+    with pytest.raises(
+        ValueError, match="expected outcome branch must be one of the primary question branches"
+    ):
         repository.save_decision(decision)
 
 
@@ -435,14 +437,15 @@ def test_decision_records_expose_pending_and_resolved_classification_fields(tmp_
     assert repository.list_baseline_decisions()[0].realized_outcome_branch == "no"
 
 
-
 def test_belief_update_round_trip_and_validation(tmp_path):
     repository = JsonForecastRepository(tmp_path)
     question = _question()
     repository.save_question(question)
     repository.save_dossier(_dossier(question))
     prior = _run(question)
-    posterior = prior.model_copy(update={"id": "run-q-binary-posterior", "probabilities": {"yes": 0.8, "no": 0.2}})
+    posterior = prior.model_copy(
+        update={"id": "run-q-binary-posterior", "probabilities": {"yes": 0.8, "no": 0.2}}
+    )
     repository.save_run(prior)
     repository.save_run(posterior)
     update = BeliefUpdate(
@@ -459,6 +462,7 @@ def test_belief_update_round_trip_and_validation(tmp_path):
     assert repository.list_updates() == [update]
     with pytest.raises(FileExistsError, match="belief update already exists"):
         repository.save_update(update)
+
 
 def _question(title: str = "Will Alice renew by February?") -> ForecastQuestion:
     return ForecastQuestion(
@@ -741,7 +745,9 @@ async def test_repository_reuses_deterministic_resolution_record_id(store: Memor
 
 
 @pytest.mark.asyncio
-async def test_json_graph_parity_for_questions_runs_and_resolutions(store: MemoryStore, tmp_path) -> None:
+async def test_json_graph_parity_for_questions_runs_and_resolutions(
+    store: MemoryStore, tmp_path
+) -> None:
     deal = _make_deal_entity()
     await store.upsert_entity(deal)
     graph_repository = ForecastRepository(
@@ -776,9 +782,13 @@ async def test_json_graph_parity_for_questions_runs_and_resolutions(store: Memor
         for question in graph_questions
     ]
 
-    assert _normalized_models(json_repository.list_questions()) == _normalized_models(graph_questions)
+    assert _normalized_models(json_repository.list_questions()) == _normalized_models(
+        graph_questions
+    )
     assert _normalized_models(json_repository.list_runs()) == _normalized_models(graph_runs)
-    assert _normalized_models(json_repository.list_resolutions(), exclude={"id"}) == _normalized_models(
+    assert _normalized_models(
+        json_repository.list_resolutions(), exclude={"id"}
+    ) == _normalized_models(
         [resolution for resolution in graph_resolutions if resolution is not None], exclude={"id"}
     )
 

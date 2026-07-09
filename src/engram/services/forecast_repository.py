@@ -110,7 +110,9 @@ class JsonForecastRepository:
             if dossier.question_id != run.question_id:
                 raise ValueError("run dossier_id must reference a dossier for the same question_id")
             if dossier.forecast_as_of != run.forecast_as_of:
-                raise ValueError("run dossier_id must reference a dossier with matching forecast_as_of")
+                raise ValueError(
+                    "run dossier_id must reference a dossier with matching forecast_as_of"
+                )
         path = self._path(self.runs_dir, run.id)
         self._atomic_create(path, run, exists_message="forecast run already exists")
 
@@ -214,7 +216,9 @@ class JsonForecastRepository:
             raise ValueError(f"decision is already resolved: {decision_id}")
         primary_run = self.load_run(decision.primary_forecast_run_id)
         question = self.load_question(primary_run.question_id)
-        branch_ids = {branch.id for branch in question.branches} or set(question.allowed_branch_names)
+        branch_ids = {branch.id for branch in question.branches} or set(
+            question.allowed_branch_names
+        )
         if branch_ids and realized_outcome_branch not in branch_ids:
             raise ValueError("realized_outcome_branch must be one of the primary question branches")
         resolved = DecisionRecord.model_validate(
@@ -253,7 +257,6 @@ class JsonForecastRepository:
         )
         self._atomic_write(self._path(self.baseline_decisions_dir, decision_id), resolved)
         return resolved
-
 
     def save_update(self, update: BeliefUpdate) -> None:
         prior = self.load_run(update.prior_run_id)
@@ -385,8 +388,12 @@ def _verify_records(
     *,
     normalize_fields: set[str] | None = None,
 ) -> list[str]:
-    source_payloads = [_normalized_record(record, normalize_fields or set()) for record in source_records]
-    target_payloads = [_normalized_record(record, normalize_fields or set()) for record in target_records]
+    source_payloads = [
+        _normalized_record(record, normalize_fields or set()) for record in source_records
+    ]
+    target_payloads = [
+        _normalized_record(record, normalize_fields or set()) for record in target_records
+    ]
     if source_payloads != target_payloads:
         raise ValueError("migration verification failed")
     return [_record_identifier(payload) for payload in source_payloads]

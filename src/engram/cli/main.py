@@ -703,10 +703,9 @@ def forecast_run_create(
     console.print(f"[bold blue]Top branch: {run.top_branch}[/bold blue]")
 
 
-
-
 def _stable_model_json(model: Any) -> str:
     return json.dumps(model.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+
 
 async def _create_llm_forecast_run(
     question: ForecastQuestion, dossier: EvidenceDossier, *, run_id: str | None
@@ -828,7 +827,9 @@ def forecast_decision_create(
         console.print(f"[bold red]✗ {exc}[/bold red]")
         raise typer.Exit(code=1) from exc
 
-    console.print(f"[bold green]✓ Forecast-linked decision saved: {decision.decision_id}[/bold green]")
+    console.print(
+        f"[bold green]✓ Forecast-linked decision saved: {decision.decision_id}[/bold green]"
+    )
 
 
 @app.command("forecast-decision-resolve")

@@ -226,13 +226,24 @@ class Neo4jGraphEvidenceAdapter:
         included: list[Relationship] = []
         excluded_counts: Counter[str] = Counter()
         for row in rows:
-            relationship = self.store._edge_to_relationship(row["r"], row["source_id"], row["target_id"])
+            relationship = self.store._edge_to_relationship(
+                row["r"], row["source_id"], row["target_id"]
+            )
             reason = _exclusion_reason(relationship, as_of, question_id=question_id)
             if reason is not None:
                 excluded_counts[reason] += 1
             else:
                 included.append(relationship)
-        included.sort(key=lambda relationship: (relationship.recorded_from, relationship.message_id, relationship.source_id, str(relationship.rel_type), relationship.target_id, relationship.version))
+        included.sort(
+            key=lambda relationship: (
+                relationship.recorded_from,
+                relationship.message_id,
+                relationship.source_id,
+                str(relationship.rel_type),
+                relationship.target_id,
+                relationship.version,
+            )
+        )
         return included, dict(excluded_counts)
 
     async def get_target_evidence_as_of(
@@ -244,25 +255,40 @@ class Neo4jGraphEvidenceAdapter:
         question_id: str | None = None,
     ) -> GraphEvidencePacket:
         excluded_counts: Counter[str] = Counter()
-        direct_facts, fact_exclusions = await self.get_facts_as_of(tenant_id, target_id, as_of, question_id=question_id)
-        relationships, relationship_exclusions = await self.get_relationships_as_of(tenant_id, target_id, as_of, question_id=question_id)
+        direct_facts, fact_exclusions = await self.get_facts_as_of(
+            tenant_id, target_id, as_of, question_id=question_id
+        )
+        relationships, relationship_exclusions = await self.get_relationships_as_of(
+            tenant_id, target_id, as_of, question_id=question_id
+        )
         excluded_counts.update(fact_exclusions)
         excluded_counts.update(relationship_exclusions)
-        related_ids = {relationship.target_id if relationship.source_id == target_id else relationship.source_id for relationship in relationships}
+        related_ids = {
+            relationship.target_id
+            if relationship.source_id == target_id
+            else relationship.source_id
+            for relationship in relationships
+        }
         facts_by_id = {fact.id: fact for fact in direct_facts}
         for related_id in sorted(related_ids):
-            related_facts, related_exclusions = await self.get_facts_as_of(tenant_id, related_id, as_of, question_id=question_id)
+            related_facts, related_exclusions = await self.get_facts_as_of(
+                tenant_id, related_id, as_of, question_id=question_id
+            )
             excluded_counts.update(related_exclusions)
             for fact in related_facts:
                 facts_by_id[fact.id] = fact
         supersession_scan_facts: list[Fact] = []
         for entity_id in sorted({target_id, *related_ids}):
-            supersession_scan_facts.extend(await self.store.get_facts(tenant_id, entity_id, active_only=False))
+            supersession_scan_facts.extend(
+                await self.store.get_facts(tenant_id, entity_id, active_only=False)
+            )
         return GraphEvidencePacket(
             facts=sorted(facts_by_id.values(), key=lambda fact: (fact.recorded_from, fact.id)),
             relationships=relationships,
             excluded_counts=dict(excluded_counts),
-            supersession_scan_facts=sorted(supersession_scan_facts, key=lambda fact: (fact.recorded_from, fact.id)),
+            supersession_scan_facts=sorted(
+                supersession_scan_facts, key=lambda fact: (fact.recorded_from, fact.id)
+            ),
         )
 
 

@@ -38,9 +38,9 @@ def test_edgar_reit_parser_golden_response():
     rows = module.parse_edgar_company_submissions(payload)
 
     assert [row["form"] for row in rows] == ["8-K", "10-Q"]
-    assert module.build_archive_url("123", rows[0]["accession"], rows[0]["primary_document"]).endswith(
-        "/123/000126000001/reit8k.htm"
-    )
+    assert module.build_archive_url(
+        "123", rows[0]["accession"], rows[0]["primary_document"]
+    ).endswith("/123/000126000001/reit8k.htm")
 
 
 def test_courtlistener_parser_golden_response():
@@ -118,7 +118,11 @@ def test_build_corpus_questions_creates_auditable_ledger(tmp_path):
     assert source_counts["edgar_reit"] >= 12
     assert source_counts["courtlistener"] >= 8
     assert repository.list_questions()[0].id.startswith("corpus-question:")
-    assert all(item.recorded_from <= dossier.forecast_as_of for dossier in repository.list_dossiers() for item in dossier.evidence_items)
+    assert all(
+        item.recorded_from <= dossier.forecast_as_of
+        for dossier in repository.list_dossiers()
+        for item in dossier.evidence_items
+    )
     report = build_audit_report(repository, spot_check=2)
     assert report["status"] == "PASS"
     assert report["run_count"] == expected_count

@@ -355,18 +355,26 @@ def build_update_quality_report(repository: ForecastScoringRepository) -> dict[s
         branch = _resolution_branch(resolution)
         prior_log = log_score(probability_assigned_to_resolved_branch(prior, branch))
         posterior_log = log_score(probability_assigned_to_resolved_branch(posterior, branch))
-        rows.append({
-            "update_id": update.update_id,
-            "prior_run_id": prior.id,
-            "posterior_run_id": posterior.id,
-            "resolved_branch": branch,
-            "log_score_delta": prior_log - posterior_log,
-            "improved": posterior_log < prior_log,
-        })
+        rows.append(
+            {
+                "update_id": update.update_id,
+                "prior_run_id": prior.id,
+                "posterior_run_id": posterior.id,
+                "resolved_branch": branch,
+                "log_score_delta": prior_log - posterior_log,
+                "improved": posterior_log < prior_log,
+            }
+        )
     return {
         "update_count": len(rows),
         "improved_count": sum(1 for row in rows if row["improved"]),
-        "mean_log_score_delta": _mean([float(row["log_score_delta"]) for row in rows if isinstance(row["log_score_delta"], int | float)]),
+        "mean_log_score_delta": _mean(
+            [
+                float(row["log_score_delta"])
+                for row in rows
+                if isinstance(row["log_score_delta"], int | float)
+            ]
+        ),
         "updates": rows,
     }
 

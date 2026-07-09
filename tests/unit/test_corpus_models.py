@@ -17,7 +17,8 @@ def test_public_deal_fixture_schema_validation():
         deal = PublicDeal.model_validate_json(path.read_text())
         assert deal.resolved_branch in DEFAULT_CORPUS_TAXONOMY.branches
         assert deal.resolved_at >= max(
-            [doc.published_at for doc in deal.evidence_docs] + [milestone.at for milestone in deal.milestones]
+            [doc.published_at for doc in deal.evidence_docs]
+            + [milestone.at for milestone in deal.milestones]
         )
 
 

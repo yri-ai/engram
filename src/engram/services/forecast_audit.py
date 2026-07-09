@@ -11,12 +11,16 @@ if TYPE_CHECKING:
 _CLOCK_SKEW_TOLERANCE = timedelta(minutes=5)
 
 
-def build_audit_report(repository: JsonForecastRepository, *, spot_check: int = 0) -> dict[str, Any]:
+def build_audit_report(
+    repository: JsonForecastRepository, *, spot_check: int = 0
+) -> dict[str, Any]:
     """Audit Layer 1 lifecycle integrity for a JSON forecast ledger."""
 
     failures: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
-    resolutions_by_question = {resolution.question_id: resolution for resolution in repository.list_resolutions()}
+    resolutions_by_question = {
+        resolution.question_id: resolution for resolution in repository.list_resolutions()
+    }
     dossiers_by_id = {dossier.id: dossier for dossier in repository.list_dossiers()}
 
     for question in repository.list_questions():
@@ -25,7 +29,9 @@ def build_audit_report(repository: JsonForecastRepository, *, spot_check: int = 
             failures.append({"kind": "missing_resolution", "question_id": question.id})
         else:
             if not question.created_at < resolution.resolved_at:
-                failures.append({"kind": "invalid_question_resolution_order", "question_id": question.id})
+                failures.append(
+                    {"kind": "invalid_question_resolution_order", "question_id": question.id}
+                )
         if question.forecast_as_of > question.created_at + _CLOCK_SKEW_TOLERANCE:
             failures.append({"kind": "forecast_as_of_after_created_at", "question_id": question.id})
 
@@ -37,7 +43,9 @@ def build_audit_report(repository: JsonForecastRepository, *, spot_check: int = 
             continue
         dossier = dossiers_by_id.get(run.dossier_id)
         if dossier is None:
-            failures.append({"kind": "missing_dossier", "run_id": run.id, "dossier_id": run.dossier_id})
+            failures.append(
+                {"kind": "missing_dossier", "run_id": run.id, "dossier_id": run.dossier_id}
+            )
             continue
         dossier_evidence_ids = {item.id for item in dossier.evidence_items}
         cited_ids = set(run.evidence_ids)
@@ -45,11 +53,19 @@ def build_audit_report(repository: JsonForecastRepository, *, spot_check: int = 
             cited_ids = set(run.metadata["cited_evidence_ids"])
         missing_citations = sorted(cited_ids - dossier_evidence_ids)
         if missing_citations:
-            failures.append({"kind": "citation_not_in_dossier", "run_id": run.id, "evidence_ids": missing_citations})
+            failures.append(
+                {
+                    "kind": "citation_not_in_dossier",
+                    "run_id": run.id,
+                    "evidence_ids": missing_citations,
+                }
+            )
         if index < spot_check:
             for item in dossier.evidence_items:
                 if item.recorded_from > run.forecast_as_of:
-                    failures.append({"kind": "post_cutoff_evidence", "run_id": run.id, "evidence_id": item.id})
+                    failures.append(
+                        {"kind": "post_cutoff_evidence", "run_id": run.id, "evidence_id": item.id}
+                    )
             warnings.append({"kind": "json_evidence_self_consistency_check", "run_id": run.id})
 
     auditable_runs = [run for run in repository.list_runs() if run.dossier_id in dossiers_by_id]

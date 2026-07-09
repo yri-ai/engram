@@ -221,7 +221,9 @@ class LLMForecastProtocol:
 
     protocol = "llm.v1"
 
-    def __init__(self, provider: Any, *, model_name: str = "configured-llm", temperature: float = 0.0) -> None:
+    def __init__(
+        self, provider: Any, *, model_name: str = "configured-llm", temperature: float = 0.0
+    ) -> None:
         self.provider = provider
         self.model_name = model_name
         self.temperature = temperature
@@ -239,7 +241,9 @@ class LLMForecastProtocol:
         if dossier.forecast_as_of != question.forecast_as_of:
             raise ValueError("dossier forecast_as_of must match question forecast_as_of")
         if dossier.metadata.get("audit_mode"):
-            raise ValueError("dossier was compiled in audit mode and must not be used for forecasting")
+            raise ValueError(
+                "dossier was compiled in audit mode and must not be used for forecasting"
+            )
         branch_ids = [branch.id for branch in question.branches]
         evidence_ids = [item.id for item in dossier.evidence_items]
         citations = cited_evidence_ids if cited_evidence_ids is not None else evidence_ids
@@ -253,7 +257,10 @@ class LLMForecastProtocol:
         probability_payload = {str(key): float(value) for key, value in probabilities.items()}
         if set(probability_payload) != set(branch_ids):
             raise ValueError("LLM probabilities must cover exactly the question branches")
-        if any(value < 0.0 or value > 1.0 or not math.isfinite(value) for value in probability_payload.values()):
+        if any(
+            value < 0.0 or value > 1.0 or not math.isfinite(value)
+            for value in probability_payload.values()
+        ):
             raise ValueError("LLM probabilities must be finite values between 0 and 1")
         if abs(sum(probability_payload.values()) - 1.0) > 1e-6:
             raise ValueError("LLM probabilities must sum to 1.0")
@@ -269,7 +276,11 @@ class LLMForecastProtocol:
             top_branch=top_branch,
             protocol=self.protocol,
             model_name=self.model_name,
-            protocol_config={"model": self.model_name, "temperature": self.temperature, "prompt_hash": prompt_hash},
+            protocol_config={
+                "model": self.model_name,
+                "temperature": self.temperature,
+                "prompt_hash": prompt_hash,
+            },
             model_config_snapshot={"type": "llm_forecast", "prompt_hash": prompt_hash},
             evidence_ids=list(dict.fromkeys(citations)),
             rationale=str(rationale),
@@ -283,7 +294,10 @@ def _build_llm_prompt(question: ForecastQuestion, dossier: EvidenceDossier) -> s
             "task": "Assign calibrated probabilities to each closed forecast branch using only the provided as-of evidence.",
             "question": question.model_dump(mode="json"),
             "dossier": dossier.model_dump(mode="json"),
-            "response_schema": {"probabilities": {branch.id: "float" for branch in question.branches}, "rationale": "string"},
+            "response_schema": {
+                "probabilities": {branch.id: "float" for branch in question.branches},
+                "rationale": "string",
+            },
         },
         sort_keys=True,
     )

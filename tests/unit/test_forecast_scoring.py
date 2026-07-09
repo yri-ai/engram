@@ -172,7 +172,6 @@ def test_report_builder_errors_on_missing_resolution_by_default(tmp_path):
         build_calibration_report(repository)
 
 
-
 def test_forecasting_metrics_seam_reuses_canonical_scoring_functions():
     from engram.forecasting.metrics import multiclass_brier_score as seam_brier
 
@@ -185,7 +184,9 @@ def test_calibration_report_includes_update_quality(tmp_path):
     repository = JsonForecastRepository(tmp_path)
     question = _question("q-update")
     prior = _run(question, probabilities={"yes": 0.6, "no": 0.4}, top_branch="yes")
-    posterior = prior.model_copy(update={"id": "run-q-update-posterior", "probabilities": {"yes": 0.8, "no": 0.2}})
+    posterior = prior.model_copy(
+        update={"id": "run-q-update-posterior", "probabilities": {"yes": 0.8, "no": 0.2}}
+    )
     repository.save_question(question)
     repository.save_dossier(_dossier(question))
     repository.save_run(prior)
@@ -205,6 +206,7 @@ def test_calibration_report_includes_update_quality(tmp_path):
 
     assert report.metadata["update_quality"]["update_count"] == 1
     assert report.metadata["update_quality"]["improved_count"] == 1
+
 
 def _question(
     question_id: str,
