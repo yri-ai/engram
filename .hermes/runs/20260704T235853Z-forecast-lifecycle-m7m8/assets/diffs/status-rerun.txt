@@ -1,0 +1,30 @@
+ M .env.example
+ M docs/plans/2026-05-18-forecast-lifecycle-master-plan.md
+ M docs/plans/2026-06-28-temporal-forecasting-kernel.md
+ M docs/plans/2026-07-04-forecast-lifecycle-m7-m8.md
+ M src/engram/cli/main.py
+ M src/engram/models/__init__.py
+ M src/engram/models/forecasting.py
+ M src/engram/services/as_of_evidence.py
+ M src/engram/services/forecast_protocol.py
+ M src/engram/services/forecast_repository.py
+ M src/engram/services/forecast_scoring.py
+ M tests/unit/test_cli.py
+ M tests/unit/test_forecast_protocol.py
+ M tests/unit/test_forecast_repository.py
+ M tests/unit/test_forecast_scoring.py
+?? .hermes/runs/20260704T235853Z-forecast-lifecycle-m7m8/
+?? docs/corpus-schema.md
+?? docs/plans/decisions/corpus-acceptance-decision.md
+?? examples/diligence-demo/
+?? scripts/data_collection/build_corpus_questions.py
+?? scripts/data_collection/fetch_courtlistener.py
+?? scripts/data_collection/fetch_edgar_reit.py
+?? src/engram/forecasting/
+?? src/engram/models/corpus.py
+?? src/engram/services/forecast_audit.py
+?? src/engram/services/forecast_impact.py
+?? tests/e2e/test_diligence_demo.py
+?? tests/fixtures/corpus/
+?? tests/unit/test_corpus_models.py
+?? tests/unit/test_corpus_pipeline.py

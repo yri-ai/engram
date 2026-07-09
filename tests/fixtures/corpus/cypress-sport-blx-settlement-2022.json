@@ -1,0 +1,38 @@
+{
+  "deal_id": "cypress-sport-blx-settlement-2022",
+  "source_kind": "courtlistener",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.courtlistener.com/docket/63000461/cypress-holdings-iii-lp-v-sport-blx-inc/",
+      "published_at": "2022-09-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Cypress Holdings III LP v. Sport-BLX Inc.",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.courtlistener.com/docket/63000461/cypress-holdings-iii-lp-v-sport-blx-inc/",
+      "published_at": "2022-09-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Cypress Holdings III LP v. Sport-BLX Inc.",
+      "summary": "CourtListener docket includes settlement conference activity, modeling litigation restructuring path.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2022-09-01T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "Cypress Holdings III LP v. Sport-BLX Inc."
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: reprice_or_restructure."
+    }
+  ],
+  "resolved_branch": "reprice_or_restructure",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

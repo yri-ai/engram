@@ -282,6 +282,7 @@ def test_forecast_kernel_cli_flow_uses_json_dossier_without_neo4j(
     assert dossier["question_id"] == "q-cli"
     assert dossier["evidence_items"][0]["id"] == "e-renewal-signal"
     assert dossier["compiler"] == "json_evidence.v1"
+    assert json.loads((repo_path / "dossiers" / "dossier-q-cli.json").read_text()) == dossier
 
     run_result = runner.invoke(
         cli.app,
@@ -348,6 +349,99 @@ def test_forecast_kernel_cli_flow_uses_json_dossier_without_neo4j(
     assert (repo_path / "scores" / "score-run-q-cli.json").exists()
 
 
+def test_forecast_run_create_rejects_dossier_file_that_differs_from_ledger(
+    runner: CliRunner, tmp_path
+) -> None:
+    repo_path = tmp_path / "forecast-ledger"
+    evidence_path = tmp_path / "evidence.json"
+    dossier_path = tmp_path / "dossier.json"
+    as_of = "2026-01-15T00:00:00+00:00"
+
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-question-create",
+                "--repo",
+                str(repo_path),
+                "--question-id",
+                "q-dossier-mismatch",
+                "--title",
+                "Will Alice renew?",
+                "--forecast-as-of",
+                as_of,
+                "--horizon",
+                "30d",
+                "--resolution-criteria",
+                "Renewal is recorded by the horizon.",
+                "--resolved-by",
+                "2026-02-15T00:00:00+00:00",
+                "--branch",
+                "yes:Yes",
+                "--branch",
+                "no:No",
+                "--status",
+                "active",
+            ],
+        ).exit_code
+        == 0
+    )
+    evidence_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "e-original",
+                    "text": "Alice requested renewal paperwork.",
+                    "valid_from": as_of,
+                    "recorded_from": as_of,
+                    "source_id": "source-1",
+                    "supports_branch": ["yes"],
+                    "supersession_status": "current_as_of",
+                }
+            ]
+        )
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-dossier-compile",
+                "--repo",
+                str(repo_path),
+                "--question-id",
+                "q-dossier-mismatch",
+                "--evidence-json",
+                str(evidence_path),
+                "--output",
+                str(dossier_path),
+            ],
+        ).exit_code
+        == 0
+    )
+
+    dossier = json.loads(dossier_path.read_text())
+    dossier["evidence_items"][0]["text"] = "Tampered evidence text."
+    dossier_path.write_text(json.dumps(dossier))
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "forecast-run-create",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-dossier-mismatch",
+            "--dossier",
+            str(dossier_path),
+            "--run-id",
+            "run-dossier-mismatch",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "dossier file does not match persisted ledger dossier" in result.stdout
+
+
 def test_forecast_dossier_compile_rejects_future_recorded_json_evidence(
     runner: CliRunner, tmp_path
 ) -> None:
@@ -412,6 +506,110 @@ def test_forecast_dossier_compile_rejects_future_recorded_json_evidence(
 
     assert result.exit_code == 1
     assert "recorded after forecast_as_of" in result.stdout
+
+
+def test_forecast_dossier_compile_output_is_optional(runner: CliRunner, tmp_path) -> None:
+    repo_path = tmp_path / "forecast-ledger"
+    evidence_path = tmp_path / "evidence.json"
+    as_of = "2026-01-15T00:00:00+00:00"
+    runner.invoke(
+        cli.app,
+        [
+            "forecast-question-create",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-no-output",
+            "--title",
+            "Will Alice renew?",
+            "--forecast-as-of",
+            as_of,
+            "--horizon",
+            "30d",
+            "--resolution-criteria",
+            "Renewal is recorded by the horizon.",
+            "--branch",
+            "yes:Yes",
+            "--branch",
+            "no:No",
+        ],
+    )
+    evidence_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "e-1",
+                    "text": "Renewal paperwork requested.",
+                    "valid_from": as_of,
+                    "recorded_from": as_of,
+                    "source_id": "source-1",
+                    "supports_branch": ["yes"],
+                    "supersession_status": "current_as_of",
+                }
+            ]
+        )
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "forecast-dossier-compile",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-no-output",
+            "--evidence-json",
+            str(evidence_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (repo_path / "dossiers" / "dossier-q-no-output.json").exists()
+
+
+def test_forecast_ledger_migrate_cli_refuses_in_place_and_copies(
+    runner: CliRunner, tmp_path
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    as_of = "2026-01-15T00:00:00+00:00"
+    create_result = runner.invoke(
+        cli.app,
+        [
+            "forecast-question-create",
+            "--repo",
+            str(source),
+            "--question-id",
+            "q-migrate",
+            "--title",
+            "Will Alice renew?",
+            "--forecast-as-of",
+            as_of,
+            "--horizon",
+            "30d",
+            "--resolution-criteria",
+            "Renewal is recorded by the horizon.",
+            "--branch",
+            "yes:Yes",
+            "--branch",
+            "no:No",
+        ],
+    )
+    assert create_result.exit_code == 0
+
+    result = runner.invoke(
+        cli.app,
+        ["forecast-ledger-migrate", "--from", str(source), "--to", str(target)],
+    )
+
+    assert result.exit_code == 0
+    assert (target / "questions" / "q-migrate.json").exists()
+    refused = runner.invoke(
+        cli.app,
+        ["forecast-ledger-migrate", "--from", str(source), "--to", str(source)],
+    )
+    assert refused.exit_code == 1
+    assert "in-place migration" in refused.stdout
 
 
 def test_forecast_factory_seams_are_used(
@@ -578,6 +776,38 @@ def test_cli_create_forecast_question_command(
         forecast_as_of=datetime(2026, 5, 1, tzinfo=UTC),
     )
     assert context.closed is True
+    assert "deprecated" in result.stderr.lower()
+    assert "forecast-question-create" in result.stderr
+
+
+def test_canonical_forecast_question_create_emits_no_deprecation_warning(
+    runner: CliRunner, tmp_path
+) -> None:
+    result = runner.invoke(
+        cli.app,
+        [
+            "forecast-question-create",
+            "--repo",
+            str(tmp_path),
+            "--question-id",
+            "q-canonical",
+            "--title",
+            "Canonical command",
+            "--forecast-as-of",
+            "2026-01-15T00:00:00+00:00",
+            "--horizon",
+            "30d",
+            "--resolution-criteria",
+            "Resolved by records.",
+            "--branch",
+            "yes:Yes",
+            "--branch",
+            "no:No",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "deprecated" not in result.stderr.lower()
 
 
 def test_cli_run_forecast_command_persists_forecast_run(
@@ -644,6 +874,8 @@ def test_cli_run_forecast_command_persists_forecast_run(
     assert saved.metadata["extraction_variant"] == "default"
     assert abs(sum(saved.branch_probabilities.values()) - 1.0) < 1e-6
     assert context.closed is True
+    assert "deprecated" in result.stderr.lower()
+    assert "forecast-run-create" in result.stderr
 
 
 def test_cli_resolve_forecast_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
@@ -686,6 +918,8 @@ def test_cli_resolve_forecast_command(monkeypatch: pytest.MonkeyPatch, runner: C
     assert saved.run_id == "fr-1"
     assert saved.resolved_at == datetime(2026, 6, 15, tzinfo=UTC)
     assert context.closed is True
+    assert "deprecated" in result.stderr.lower()
+    assert "forecast-resolve-create" in result.stderr
 
 
 def test_cli_score_forecasts_command(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
@@ -737,6 +971,8 @@ def test_cli_score_forecasts_command(monkeypatch: pytest.MonkeyPatch, runner: Cl
     assert payload["aggregate"]["top_1_accuracy"] == 1.0
     assert payload["per_question"][0]["question_id"] == "fq-1"
     assert context.closed is True
+    assert "deprecated" in result.stderr.lower()
+    assert "forecast-score-report" in result.stderr
 
 
 def test_cli_score_forecasts_command_scores_all_questions_for_target(
@@ -868,3 +1104,323 @@ def test_cli_create_forecast_question_uses_single_event_loop(
     )
 
     assert result.exit_code == 0
+
+
+def test_forecast_decision_cli_and_impact_report_flow(runner: CliRunner, tmp_path) -> None:
+    repo_path = tmp_path / "forecast-ledger"
+    evidence_path = tmp_path / "evidence.json"
+    as_of = "2026-01-15T00:00:00+00:00"
+    resolved_at = "2026-02-15T00:00:00+00:00"
+    baseline_decided_at = "2026-01-10T00:00:00+00:00"
+    measured_decided_at = "2026-01-20T00:00:00+00:00"
+    runner.invoke(
+        cli.app,
+        [
+            "forecast-question-create",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-impact",
+            "--title",
+            "Will Alice renew?",
+            "--forecast-as-of",
+            as_of,
+            "--horizon",
+            "30d",
+            "--resolution-criteria",
+            "Renewal is recorded.",
+            "--branch",
+            "yes:Yes",
+            "--branch",
+            "no:No",
+            "--status",
+            "active",
+        ],
+    )
+    evidence_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "e-renewal",
+                    "text": "Alice requested renewal paperwork.",
+                    "valid_from": as_of,
+                    "recorded_from": as_of,
+                    "source_id": "source-1",
+                    "supports_branch": ["yes"],
+                    "supersession_status": "current_as_of",
+                }
+            ]
+        )
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-dossier-compile",
+                "--repo",
+                str(repo_path),
+                "--question-id",
+                "q-impact",
+                "--evidence-json",
+                str(evidence_path),
+            ],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-run-create",
+                "--repo",
+                str(repo_path),
+                "--question-id",
+                "q-impact",
+                "--dossier",
+                str(repo_path / "dossiers" / "dossier-q-impact.json"),
+                "--run-id",
+                "run-q-impact",
+            ],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-resolve-create",
+                "--repo",
+                str(repo_path),
+                "--question-id",
+                "q-impact",
+                "--resolved-branch",
+                "yes",
+                "--resolved-at",
+                resolved_at,
+            ],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-baseline-decision-create",
+                "--repo",
+                str(repo_path),
+                "--decision-id",
+                "baseline-1",
+                "--decided-at",
+                baseline_decided_at,
+                "--decision-type",
+                "renewal_offer",
+                "--expected-outcome-branch",
+                "no",
+                "--rationale",
+                "Pre-forecast baseline.",
+            ],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-decision-resolve",
+                "--repo",
+                str(repo_path),
+                "--decision-id",
+                "baseline-1",
+                "--realized-outcome-branch",
+                "yes",
+                "--impact-kind",
+                "miss",
+                "--impact-value",
+                "0",
+                "--baseline",
+            ],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-decision-create",
+                "--repo",
+                str(repo_path),
+                "--decision-id",
+                "decision-1",
+                "--decided-at",
+                measured_decided_at,
+                "--decision-type",
+                "renewal_offer",
+                "--primary-forecast-run-id",
+                "run-q-impact",
+                "--expected-outcome-branch",
+                "yes",
+                "--rationale",
+                "Forecast favored renewal.",
+            ],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-decision-resolve",
+                "--repo",
+                str(repo_path),
+                "--decision-id",
+                "decision-1",
+                "--realized-outcome-branch",
+                "yes",
+                "--impact-kind",
+                "avoided_loss",
+                "--impact-value",
+                "1000",
+            ],
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            cli.app,
+            [
+                "forecast-decision-create",
+                "--repo",
+                str(repo_path),
+                "--decision-id",
+                "decision-pending",
+                "--decided-at",
+                measured_decided_at,
+                "--decision-type",
+                "renewal_offer",
+                "--primary-forecast-run-id",
+                "run-q-impact",
+                "--expected-outcome-branch",
+                "yes",
+                "--rationale",
+                "Decision has not been resolved yet.",
+            ],
+        ).exit_code
+        == 0
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "forecast-impact-report",
+            "--repo",
+            str(repo_path),
+            "--baseline-window",
+            "2026-01-01T00:00:00+00:00..2026-01-15T00:00:00+00:00",
+            "--measure-window",
+            "2026-01-15T00:00:00+00:00..2026-02-01T00:00:00+00:00",
+            "--min-resolved-records",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["baseline"]["hit_rate"] == 0.0
+    assert payload["forecast_linked"]["hit_rate"] == 1.0
+    assert payload["forecast_linked"]["pending_forecast_linked_count"] == 1
+    assert payload["forecast_linked"]["avoided_loss"] == 1000.0
+
+
+def test_forecast_audit_report_cli_passes_clean_ledger(runner: CliRunner, tmp_path) -> None:
+    repo_path = tmp_path / "forecast-ledger"
+    evidence_path = tmp_path / "evidence.json"
+    as_of = "2026-01-15T00:00:00+00:00"
+    resolved_at = "2026-12-15T00:00:00+00:00"
+    runner.invoke(
+        cli.app,
+        [
+            "forecast-question-create",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-audit",
+            "--title",
+            "Will Alice renew?",
+            "--forecast-as-of",
+            as_of,
+            "--horizon",
+            "30d",
+            "--resolution-criteria",
+            "Renewal is recorded.",
+            "--branch",
+            "yes:Yes",
+            "--branch",
+            "no:No",
+            "--status",
+            "active",
+        ],
+    )
+    evidence_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "e-renewal",
+                    "text": "Alice requested renewal paperwork.",
+                    "valid_from": as_of,
+                    "recorded_from": as_of,
+                    "source_id": "source-1",
+                    "supports_branch": ["yes"],
+                    "supersession_status": "current_as_of",
+                }
+            ]
+        )
+    )
+    runner.invoke(
+        cli.app,
+        [
+            "forecast-dossier-compile",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-audit",
+            "--evidence-json",
+            str(evidence_path),
+        ],
+    )
+    runner.invoke(
+        cli.app,
+        [
+            "forecast-run-create",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-audit",
+            "--dossier",
+            str(repo_path / "dossiers" / "dossier-q-audit.json"),
+            "--run-id",
+            "run-q-audit",
+        ],
+    )
+    runner.invoke(
+        cli.app,
+        [
+            "forecast-resolve-create",
+            "--repo",
+            str(repo_path),
+            "--question-id",
+            "q-audit",
+            "--resolved-branch",
+            "yes",
+            "--resolved-at",
+            resolved_at,
+        ],
+    )
+
+    result = runner.invoke(
+        cli.app, ["forecast-audit-report", "--repo", str(repo_path), "--spot-check", "1"]
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "PASS"
+    assert payload["auditable_run_count"] == 1

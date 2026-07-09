@@ -1,0 +1,38 @@
+{
+  "deal_id": "retail-opportunity-kimco-2025",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1407623/000119312525001782/d900302ddefm14a.htm",
+      "published_at": "2025-02-07T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Retail Opportunity Investments / Kimco acquisition",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1407623/000119312525001782/d900302ddefm14a.htm",
+      "published_at": "2025-02-07T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Retail Opportunity Investments / Kimco acquisition",
+      "summary": "Retail Opportunity Investments proxy materials describe the Kimco acquisition process.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2025-02-07T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "Retail Opportunity Investments / Kimco acquisition"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

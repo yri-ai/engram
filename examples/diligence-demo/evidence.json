@@ -1,0 +1,20 @@
+[
+  {
+    "id": "e-loi",
+    "text": "Buyer signed an LOI and opened diligence.",
+    "valid_from": "2026-01-10T00:00:00+00:00",
+    "recorded_from": "2026-01-10T00:00:00+00:00",
+    "source_id": "loi",
+    "supports_branch": ["advance_or_close"],
+    "supersession_status": "current_as_of"
+  },
+  {
+    "id": "e-price-gap",
+    "text": "Inspection found deferred maintenance creating price pressure.",
+    "valid_from": "2026-01-12T00:00:00+00:00",
+    "recorded_from": "2026-01-12T00:00:00+00:00",
+    "source_id": "inspection",
+    "supports_branch": ["reprice_or_restructure"],
+    "supersession_status": "current_as_of"
+  }
+]

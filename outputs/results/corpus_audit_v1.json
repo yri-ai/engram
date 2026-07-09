@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "question_count": 22,
+  "run_count": 22,
+  "auditable_run_count": 22,
+  "unauditable_run_count": 0,
+  "failure_count": 0,
+  "failures": [],
+  "warnings": [
+    {
+      "kind": "json_evidence_self_consistency_check",
+      "run_id": "corpus-run:agridime-receiver-2023"
+    },
+    {
+      "kind": "json_evidence_self_consistency_check",
+      "run_id": "corpus-run:airc-blackstone-2024"
+    },
+    {
+      "kind": "json_evidence_self_consistency_check",
+      "run_id": "corpus-run:capital-funding-batavia-foreclosure-2024"
+    },
+    {
+      "kind": "json_evidence_self_consistency_check",
+      "run_id": "corpus-run:cypress-sport-blx-settlement-2022"
+    },
+    {
+      "kind": "json_evidence_self_consistency_check",
+      "run_id": "corpus-run:elev8-commercial-investment-2025"
+    }
+  ]
+}

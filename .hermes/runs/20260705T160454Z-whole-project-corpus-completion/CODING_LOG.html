@@ -1,0 +1,57 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Coding Log — Forecast Lifecycle Corpus Completion</title><style>body{font-family:system-ui,Segoe UI,sans-serif;margin:2rem;line-height:1.45;max-width:1200px}pre{white-space:pre-wrap;background:#111;color:#eee;padding:1rem;border-radius:8px;overflow:auto}.badge{display:inline-block;padding:.25rem .55rem;border-radius:999px;background:#1a7f37;color:white;font-weight:700}.warn{background:#9a6700}.fail{background:#cf222e}code{background:#eee;padding:.1rem .25rem;border-radius:4px}table{border-collapse:collapse;margin:1rem 0;width:100%}td,th{border:1px solid #ddd;padding:.35rem .6rem;vertical-align:top}a{color:#0969da}</style></head><body><span class='badge'>PASS</span><h1>Coding Log — Forecast Lifecycle Corpus Completion</h1><h2>Corpus generated</h2><pre>{
+  &quot;deal_count&quot;: 22,
+  &quot;question_count&quot;: 22,
+  &quot;dossier_count&quot;: 22,
+  &quot;run_count&quot;: 22,
+  &quot;resolution_count&quot;: 22
+}</pre><h2>Acceptance</h2><pre>{
+  &quot;schema_version&quot;: 1,
+  &quot;status&quot;: &quot;PASS&quot;,
+  &quot;edgar_reit_deal_count&quot;: 13,
+  &quot;courtlistener_deal_count&quot;: 9,
+  &quot;deal_count&quot;: 22,
+  &quot;question_count&quot;: 22,
+  &quot;target_deal_count_min&quot;: 20,
+  &quot;target_edgar_reit_range&quot;: [
+    12,
+    15
+  ],
+  &quot;target_courtlistener_range&quot;: [
+    8,
+    10
+  ],
+  &quot;audit_summary&quot;: {
+    &quot;schema_version&quot;: 1,
+    &quot;status&quot;: &quot;PASS&quot;,
+    &quot;question_count&quot;: 22,
+    &quot;run_count&quot;: 22,
+    &quot;auditable_run_count&quot;: 22,
+    &quot;unauditable_run_count&quot;: 0,
+    &quot;failure_count&quot;: 0,
+    &quot;failures&quot;: [],
+    &quot;warnings&quot;: [
+      {
+        &quot;kind&quot;: &quot;json_evidence_self_consistency_check&quot;,
+        &quot;run_id&quot;: &quot;corpus-run:agridime-receiver-2023&quot;
+      },
+      {
+        &quot;kind&quot;: &quot;json_evidence_self_consistency_check&quot;,
+        &quot;run_id&quot;: &quot;corpus-run:airc-blackstone-2024&quot;
+      },
+      {
+        &quot;kind&quot;: &quot;json_evidence_self_consistency_check&quot;,
+        &quot;run_id&quot;: &quot;corpus-run:capital-funding-batavia-foreclosure-2024&quot;
+      },
+      {
+        &quot;kind&quot;: &quot;json_evidence_self_consistency_check&quot;,
+        &quot;run_id&quot;: &quot;corpus-run:cypress-sport-blx-settlement-2022&quot;
+      },
+      {
+        &quot;kind&quot;: &quot;json_evidence_self_consistency_check&quot;,
+        &quot;run_id&quot;: &quot;corpus-run:elev8-commercial-investment-2025&quot;
+      }
+    ]
+  },
+  &quot;source&quot;: &quot;live web/search curated public corpus fixtures under tests/fixtures/corpus&quot;,
+  &quot;note&quot;: &quot;Acceptance passes because corpus count thresholds and lifecycle audit pass.&quot;
+}</pre><h2>Sources</h2><table><tr><th>Deal</th><th>Kind</th><th>Resolved branch</th><th>URL</th></tr><tr><td>agridime-receiver-2023</td><td>courtlistener</td><td>terminated_or_failed</td><td><a href='https://www.courtlistener.com/docket/68086971/securities-and-exchange-commission-v-agridime-llc/'>https://www.courtlistener.com/docket/68086971/securities-and-exchange-commission-v-agridime-llc/</a></td></tr><tr><td>airc-blackstone-2024</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.blackstone.com/news/press/blackstone-real-estate-completes-privatization-of-air-communities-for-approximately-10-billion/'>https://www.blackstone.com/news/press/blackstone-real-estate-completes-privatization-of-air-communities-for-approximately-10-billion/</a></td></tr><tr><td>capital-funding-batavia-foreclosure-2024</td><td>courtlistener</td><td>terminated_or_failed</td><td><a href='https://www.courtlistener.com/docket/68213286/capital-funding-llc-v-batavia-llc/'>https://www.courtlistener.com/docket/68213286/capital-funding-llc-v-batavia-llc/</a></td></tr><tr><td>cypress-sport-blx-settlement-2022</td><td>courtlistener</td><td>reprice_or_restructure</td><td><a href='https://www.courtlistener.com/docket/63000461/cypress-holdings-iii-lp-v-sport-blx-inc/'>https://www.courtlistener.com/docket/63000461/cypress-holdings-iii-lp-v-sport-blx-inc/</a></td></tr><tr><td>peakstone-brookfield-2026</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.tipranks.com/news/company-announcements/brookfield-completes-peakstone-realty-trust-take-private-acquisition'>https://www.tipranks.com/news/company-announcements/brookfield-completes-peakstone-realty-trust-take-private-acquisition</a></td></tr><tr><td>elev8-commercial-investment-2025</td><td>courtlistener</td><td>reprice_or_restructure</td><td><a href='https://www.courtlistener.com/docket/71741614/de-la-torre-pardo-v-elev8-commercial-investment-i-llc/'>https://www.courtlistener.com/docket/71741614/de-la-torre-pardo-v-elev8-commercial-investment-i-llc/</a></td></tr><tr><td>gnl-rtl-merger-2023</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.sec.gov/Archives/edgar/data/1526113/000110465923100026/tm2325830d1_ex99-1.htm'>https://www.sec.gov/Archives/edgar/data/1526113/000110465923100026/tm2325830d1_ex99-1.htm</a></td></tr><tr><td>green-mountain-precision-foreclosure</td><td>courtlistener</td><td>terminated_or_failed</td><td><a href='https://www.courtlistener.com/docket/59976971/green-mountain-holdings-cayman-ltd-v-precision-pro-contracting/'>https://www.courtlistener.com/docket/59976971/green-mountain-holdings-cayman-ltd-v-precision-pro-contracting/</a></td></tr><tr><td>healthcare-realty-hta-2022</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.marketscreener.com/quote/stock/HEALTHCARE-REALTY-TRUST-12974/news/Healthcare-Realty-Trust-Incorporated-AND-HEALTHCARE-TRUST-OF-AMERICA-ANNOUNCE-CLOSING-OF-MERGER-41037784/'>https://www.marketscreener.com/quote/stock/HEALTHCARE-REALTY-TRUST-12974/news/Healthcare-Realty-Trust-Incorporated-AND-HEALTHCARE-TRUST-OF-AMERICA-ANNOUNCE-CLOSING-OF-MERGER-41037784/</a></td></tr><tr><td>hersha-ksl-merger-2023</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://d18rn0p25nwr6d.cloudfront.net/CIK-0001063344/45acf7a7-ea52-4bf1-a4c0-e8ed6cdda698.html'>https://d18rn0p25nwr6d.cloudfront.net/CIK-0001063344/45acf7a7-ea52-4bf1-a4c0-e8ed6cdda698.html</a></td></tr><tr><td>indus-centerbridge-gic-2023</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.sec.gov/Archives/edgar/data/1037390/000110465923076131/tm2319986d1_ex99-1.htm'>https://www.sec.gov/Archives/edgar/data/1037390/000110465923076131/tm2319986d1_ex99-1.htm</a></td></tr><tr><td>kimco-rpt-merger-2024</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://investors.kimcorealty.com/filings-results/sec-filings/content/0001140361-24-000247/ny20017682x1_ex99-1.htm'>https://investors.kimcorealty.com/filings-results/sec-filings/content/0001140361-24-000247/ny20017682x1_ex99-1.htm</a></td></tr><tr><td>prologis-duke-merger-2022</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://ir.prologis.com/press-releases/detail/940/prologis-stockholders-and-duke-realty-shareholders-approve'>https://ir.prologis.com/press-releases/detail/940/prologis-stockholders-and-duke-realty-shareholders-approve</a></td></tr><tr><td>retail-opportunity-kimco-2025</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.sec.gov/Archives/edgar/data/1407623/000119312525001782/d900302ddefm14a.htm'>https://www.sec.gov/Archives/edgar/data/1407623/000119312525001782/d900302ddefm14a.htm</a></td></tr><tr><td>revenue-management-commerce-bank-2025</td><td>courtlistener</td><td>reprice_or_restructure</td><td><a href='https://www.courtlistener.com/docket/69688892/revenue-management-solutions-llc-v-commerce-bank/'>https://www.courtlistener.com/docket/69688892/revenue-management-solutions-llc-v-commerce-bank/</a></td></tr><tr><td>safehold-istar-merger-2023</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.sec.gov/Archives/edgar/data/1688852/000110465923039699/tm2311045d1_ex99-1.htm'>https://www.sec.gov/Archives/edgar/data/1688852/000110465923039699/tm2311045d1_ex99-1.htm</a></td></tr><tr><td>savannah-land-holdings-2025</td><td>courtlistener</td><td>reprice_or_restructure</td><td><a href='https://www.courtlistener.com/docket/69521514/united-states-v-savannah-land-holdings-llc/'>https://www.courtlistener.com/docket/69521514/united-states-v-savannah-land-holdings-llc/</a></td></tr><tr><td>sec-wells-real-estate-2024</td><td>courtlistener</td><td>terminated_or_failed</td><td><a href='https://www.courtlistener.com/docket/69059542/securities-and-exchange-commission-v-wells-real-estate-investment-llc/'>https://www.courtlistener.com/docket/69059542/securities-and-exchange-commission-v-wells-real-estate-investment-llc/</a></td></tr><tr><td>spirit-realty-income-2024</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.sec.gov/Archives/edgar/data/726728/000110465924006077/tm243768d1_8k.htm'>https://www.sec.gov/Archives/edgar/data/726728/000110465924006077/tm243768d1_8k.htm</a></td></tr><tr><td>store-gic-oakstreet-2023</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.businesswire.com/news/home/20230202005925/en/GIC-and-Oak-Street-Complete-$15-Billion-Acquisition-of-STORE-Capital'>https://www.businesswire.com/news/home/20230202005925/en/GIC-and-Oak-Street-Complete-$15-Billion-Acquisition-of-STORE-Capital</a></td></tr><tr><td>us-bank-natixis-jeri-foreclosure</td><td>courtlistener</td><td>terminated_or_failed</td><td><a href='https://www.courtlistener.com/docket/68233956/us-bank-trust-company-national-association-as-trustee-for-the-benefit/'>https://www.courtlistener.com/docket/68233956/us-bank-trust-company-national-association-as-trustee-for-the-benefit/</a></td></tr><tr><td>whitestone-ares-2026</td><td>edgar_reit</td><td>advance_or_close</td><td><a href='https://www.trefis.com/data/companies/WSR'>https://www.trefis.com/data/companies/WSR</a></td></tr></table><script type="application/json" id="report-metadata">{&quot;phase&quot;: &quot;coding&quot;, &quot;status&quot;: &quot;PASS&quot;, &quot;runId&quot;: &quot;20260705T160454Z-whole-project-corpus-completion&quot;, &quot;worktree&quot;: &quot;/home/leo/dev/projects/engram/.worktree/forecast-lifecycle-m7-m8&quot;, &quot;generatedAt&quot;: &quot;2026-07-05T17:28:17.730061+00:00&quot;}</script></body></html>

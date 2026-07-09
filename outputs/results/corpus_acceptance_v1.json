@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "edgar_reit_deal_count": 13,
+  "courtlistener_deal_count": 9,
+  "deal_count": 22,
+  "question_count": 22,
+  "target_deal_count_min": 20,
+  "target_edgar_reit_range": [
+    12,
+    15
+  ],
+  "target_courtlistener_range": [
+    8,
+    10
+  ],
+  "audit_summary": {
+    "schema_version": 1,
+    "status": "PASS",
+    "question_count": 22,
+    "run_count": 22,
+    "auditable_run_count": 22,
+    "unauditable_run_count": 0,
+    "failure_count": 0,
+    "failures": [],
+    "warnings": [
+      {
+        "kind": "json_evidence_self_consistency_check",
+        "run_id": "corpus-run:agridime-receiver-2023"
+      },
+      {
+        "kind": "json_evidence_self_consistency_check",
+        "run_id": "corpus-run:airc-blackstone-2024"
+      },
+      {
+        "kind": "json_evidence_self_consistency_check",
+        "run_id": "corpus-run:capital-funding-batavia-foreclosure-2024"
+      },
+      {
+        "kind": "json_evidence_self_consistency_check",
+        "run_id": "corpus-run:cypress-sport-blx-settlement-2022"
+      },
+      {
+        "kind": "json_evidence_self_consistency_check",
+        "run_id": "corpus-run:elev8-commercial-investment-2025"
+      }
+    ]
+  },
+  "source": "live web/search curated public corpus fixtures under tests/fixtures/corpus",
+  "note": "Acceptance passes because corpus count thresholds and lifecycle audit pass; resolution-evidence docs are excluded from forecast dossiers to prevent answer leakage."
+}

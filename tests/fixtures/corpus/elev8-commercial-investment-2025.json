@@ -1,0 +1,38 @@
+{
+  "deal_id": "elev8-commercial-investment-2025",
+  "source_kind": "courtlistener",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.courtlistener.com/docket/71741614/de-la-torre-pardo-v-elev8-commercial-investment-i-llc/",
+      "published_at": "2025-01-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "De La Torre Pardo v. Elev8 Commercial Investment I LLC",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.courtlistener.com/docket/71741614/de-la-torre-pardo-v-elev8-commercial-investment-i-llc/",
+      "published_at": "2025-01-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "De La Torre Pardo v. Elev8 Commercial Investment I LLC",
+      "summary": "CourtListener docket involving Elev8 Commercial Investment I LLC.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2025-01-01T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "De La Torre Pardo v. Elev8 Commercial Investment I LLC"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: reprice_or_restructure."
+    }
+  ],
+  "resolved_branch": "reprice_or_restructure",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

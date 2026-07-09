@@ -1,0 +1,38 @@
+{
+  "deal_id": "safehold-istar-merger-2023",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1688852/000110465923039699/tm2311045d1_ex99-1.htm",
+      "published_at": "2023-03-31T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Safehold / iStar merger",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.sec.gov/Archives/edgar/data/1688852/000110465923039699/tm2311045d1_ex99-1.htm",
+      "published_at": "2023-03-31T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Safehold / iStar merger",
+      "summary": "Safehold closed the merger with iStar and related spin-off of legacy assets.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2023-03-31T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "Safehold / iStar merger"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

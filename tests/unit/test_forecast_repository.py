@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
 
 from engram.models.entity import Entity, EntityType
 from engram.models.forecasting import (
+    BaselineDecisionRecord,
+    BeliefUpdate,
+    DecisionRecord,
+    EvidenceDossier,
+    EvidenceItem,
     ForecastQuestion,
     ForecastQuestionType,
     ForecastResolution,
@@ -17,7 +23,12 @@ from engram.models.forecasting import (
     QuestionStatus,
     ResolutionCriteria,
 )
-from engram.services.forecast_repository import ForecastRepository, JsonForecastRepository
+from engram.services.forecast_repository import (
+    ForecastRepository,
+    JsonForecastRepository,
+    SchemaVersionError,
+    migrate_json_forecast_ledger,
+)
 from engram.storage.memory import MemoryStore
 
 NOW = datetime(2026, 1, 15, tzinfo=UTC)
@@ -76,6 +87,7 @@ def test_save_load_and_list_run_refuses_duplicate_run_id(tmp_path):
     run = _run(question)
 
     repository.save_question(question)
+    repository.save_dossier(_dossier(question))
     repository.save_run(run)
 
     assert repository.load_run(run.id) == run
@@ -113,6 +125,345 @@ def test_score_persistence(tmp_path):
     assert repository.list_scores() == [score]
 
 
+def test_json_ledger_validates_schema_version_on_read(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    payload = json.loads((tmp_path / "questions" / f"{question.id}.json").read_text())
+    payload["schema_version"] = 999
+    (tmp_path / "questions" / f"{question.id}.json").write_text(json.dumps(payload))
+
+    with pytest.raises(SchemaVersionError, match="Unsupported schema_version 999"):
+        repository.load_question(question.id)
+
+
+def test_dossier_round_trip_and_immutability(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    dossier = _dossier(_question())
+
+    repository.save_dossier(dossier)
+
+    assert repository.load_dossier(dossier.id) == dossier
+    assert repository.list_dossiers() == [dossier]
+    with pytest.raises(FileExistsError, match="evidence dossier already exists"):
+        repository.save_dossier(dossier)
+
+
+def test_save_run_rejects_missing_dossier_reference(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+
+    with pytest.raises(ValueError, match="dossier_id does not exist"):
+        repository.save_run(_run(question))
+
+
+def test_save_run_rejects_dossier_for_different_question(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    other_question = _question().model_copy(update={"id": "q-other"})
+    repository.save_question(question)
+    repository.save_question(other_question)
+    repository.save_dossier(_dossier(other_question).model_copy(update={"id": "dossier-q-other"}))
+
+    with pytest.raises(ValueError, match="same question_id"):
+        repository.save_run(_run(question).model_copy(update={"dossier_id": "dossier-q-other"}))
+
+
+def test_save_run_rejects_dossier_with_different_forecast_as_of(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    mismatched_dossier = _dossier(question).model_copy(update={"forecast_as_of": LATER})
+    repository.save_dossier(mismatched_dossier)
+
+    with pytest.raises(ValueError, match="matching forecast_as_of"):
+        repository.save_run(_run(question))
+
+
+def test_save_resolution_rejects_second_resolution_for_question(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    repository.save_resolution(_resolution(question))
+
+    second = _resolution(question).model_copy(update={"id": "resolution-q-binary-2"})
+    with pytest.raises(ValueError, match="question already has a resolution"):
+        repository.save_resolution(second)
+
+
+def test_migrate_json_forecast_ledger_copies_and_verifies(tmp_path):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    repository = JsonForecastRepository(source)
+    question = _question()
+    dossier = _dossier(question)
+    run = _run(question)
+    repository.save_question(question)
+    repository.save_dossier(dossier)
+    repository.save_run(run)
+    repository.save_resolution(_resolution(question))
+    repository.save_decision(_decision())
+    repository.save_baseline_decision(_baseline_decision())
+    repository.save_score(_score())
+
+    summary = migrate_json_forecast_ledger(source, target)
+
+    assert summary == {
+        "questions": ["q-binary"],
+        "dossiers": ["dossier-q-binary"],
+        "runs": ["run-q-binary"],
+        "resolutions": ["resolution-q-binary"],
+        "decisions": ["decision-q-binary"],
+        "baseline_decisions": ["baseline-decision-q-binary"],
+        "updates": [],
+        "scores": ["score-run-q-binary"],
+    }
+    migrated = JsonForecastRepository(target)
+    assert migrated.load_run(run.id) == run
+    assert migrated.list_decisions() == [_decision()]
+    assert migrated.list_baseline_decisions() == [_baseline_decision()]
+    with pytest.raises(ValueError, match="in-place migration"):
+        migrate_json_forecast_ledger(source, source)
+
+
+def test_migrate_json_forecast_ledger_preserves_pre_dossier_runs(tmp_path):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    repository = JsonForecastRepository(source)
+    question = _question()
+    run = _run(question)
+    repository.save_question(question)
+    # Simulate a pre-M7 ledger: runs may cite a dossier id before dossiers were
+    # ledger-persisted. Migration preserves the artifact; future save_run calls
+    # still enforce the new dangling-dossier guard.
+    (source / "runs" / f"{run.id}.json").write_text(
+        run.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+
+    summary = migrate_json_forecast_ledger(source, target)
+
+    assert summary["runs"] == [run.id]
+    assert JsonForecastRepository(target).load_run(run.id) == run
+
+
+def test_forecast_linked_decision_round_trip(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    decision = _decision()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+
+    repository.save_decision(decision)
+
+    assert repository.load_decision(decision.decision_id) == decision
+    assert repository.list_decisions() == [decision]
+    assert (tmp_path / "decisions" / f"{decision.decision_id}.json").exists()
+
+
+def test_baseline_decision_round_trip(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    decision = _baseline_decision()
+
+    repository.save_baseline_decision(decision)
+
+    assert repository.load_baseline_decision(decision.decision_id) == decision
+    assert repository.list_baseline_decisions() == [decision]
+    assert (tmp_path / "baseline_decisions" / f"{decision.decision_id}.json").exists()
+
+
+def test_save_decision_rejects_dangling_primary_run(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+
+    with pytest.raises(ValueError, match="primary_forecast_run_id does not exist"):
+        repository.save_decision(_decision())
+
+
+def test_save_decision_rejects_dangling_supporting_run(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+    decision = _decision().model_copy(update={"supporting_forecast_run_ids": ["missing-run"]})
+
+    with pytest.raises(ValueError, match="supporting_forecast_run_id does not exist"):
+        repository.save_decision(decision)
+
+
+def test_save_decision_rejects_primary_run_in_supporting_runs(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+    decision = _decision().model_copy(update={"supporting_forecast_run_ids": ["run-q-binary"]})
+
+    with pytest.raises(ValueError, match="primary forecast run must not be supporting"):
+        repository.save_decision(decision)
+
+
+def test_save_decision_rejects_expected_branch_outside_primary_question(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+    decision = _decision().model_copy(update={"expected_outcome_branch": "maybe"})
+
+    with pytest.raises(
+        ValueError, match="expected outcome branch must be one of the primary question branches"
+    ):
+        repository.save_decision(decision)
+
+
+def test_decision_records_use_exclusive_create(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    decision = _decision()
+    baseline_decision = _baseline_decision()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+    repository.save_decision(decision)
+    repository.save_baseline_decision(baseline_decision)
+
+    with pytest.raises(FileExistsError, match="decision already exists"):
+        repository.save_decision(decision)
+    with pytest.raises(FileExistsError, match="baseline decision already exists"):
+        repository.save_baseline_decision(baseline_decision)
+
+
+def test_resolve_decision_rejects_realized_branch_outside_primary_question(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+    repository.save_decision(_decision())
+
+    with pytest.raises(ValueError, match="realized_outcome_branch"):
+        repository.resolve_decision(
+            "decision-q-binary",
+            realized_outcome_branch="maybe",
+            impact_value=None,
+            impact_kind=None,
+        )
+
+
+def test_resolve_decision_is_guarded_one_time_update(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    decision = _decision()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+    repository.save_decision(decision)
+
+    resolved = repository.resolve_decision(
+        decision.decision_id,
+        realized_outcome_branch="yes",
+        impact_value=1250.0,
+        impact_kind="hit",
+    )
+
+    assert resolved.realized_outcome_branch == "yes"
+    assert resolved.impact_value == 1250.0
+    assert resolved.impact_kind == "hit"
+    assert repository.load_decision(decision.decision_id) == resolved
+    with pytest.raises(ValueError, match="decision is already resolved"):
+        repository.resolve_decision(
+            decision.decision_id,
+            realized_outcome_branch="no",
+            impact_value=-1250.0,
+            impact_kind="miss",
+        )
+
+
+def test_resolve_baseline_decision_is_guarded_one_time_update(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    decision = _baseline_decision()
+    repository.save_baseline_decision(decision)
+
+    resolved = repository.resolve_baseline_decision(
+        decision.decision_id,
+        realized_outcome_branch="no",
+        impact_value=-500.0,
+        impact_kind="miss",
+    )
+
+    assert resolved.realized_outcome_branch == "no"
+    assert resolved.impact_value == -500.0
+    assert resolved.impact_kind == "miss"
+    assert repository.load_baseline_decision(decision.decision_id) == resolved
+    with pytest.raises(ValueError, match="baseline decision is already resolved"):
+        repository.resolve_baseline_decision(
+            decision.decision_id,
+            realized_outcome_branch="yes",
+            impact_value=500.0,
+            impact_kind="hit",
+        )
+
+
+def test_decision_records_expose_pending_and_resolved_classification_fields(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    forecast_decision = _decision()
+    baseline_decision = _baseline_decision()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    repository.save_run(_run(question))
+    repository.save_decision(forecast_decision)
+    repository.save_baseline_decision(baseline_decision)
+
+    assert repository.list_decisions()[0].realized_outcome_branch is None
+    assert repository.list_baseline_decisions()[0].realized_outcome_branch is None
+
+    repository.resolve_decision(
+        forecast_decision.decision_id,
+        realized_outcome_branch="yes",
+        impact_value=1250.0,
+        impact_kind="hit",
+    )
+    repository.resolve_baseline_decision(
+        baseline_decision.decision_id,
+        realized_outcome_branch="no",
+        impact_value=-500.0,
+        impact_kind="miss",
+    )
+
+    assert repository.list_decisions()[0].realized_outcome_branch == "yes"
+    assert repository.list_baseline_decisions()[0].realized_outcome_branch == "no"
+
+
+def test_belief_update_round_trip_and_validation(tmp_path):
+    repository = JsonForecastRepository(tmp_path)
+    question = _question()
+    repository.save_question(question)
+    repository.save_dossier(_dossier(question))
+    prior = _run(question)
+    posterior = prior.model_copy(
+        update={"id": "run-q-binary-posterior", "probabilities": {"yes": 0.8, "no": 0.2}}
+    )
+    repository.save_run(prior)
+    repository.save_run(posterior)
+    update = BeliefUpdate(
+        update_id="update-1",
+        prior_run_id=prior.id,
+        posterior_run_id=posterior.id,
+        trigger_evidence_ids=["e-1"],
+        update_at=question.forecast_as_of,
+    )
+
+    repository.save_update(update)
+
+    assert repository.load_update(update.update_id) == update
+    assert repository.list_updates() == [update]
+    with pytest.raises(FileExistsError, match="belief update already exists"):
+        repository.save_update(update)
+
+
 def _question(title: str = "Will Alice renew by February?") -> ForecastQuestion:
     return ForecastQuestion(
         id="q-binary",
@@ -141,6 +492,26 @@ def _run(question: ForecastQuestion) -> ForecastRun:
     )
 
 
+def _dossier(question: ForecastQuestion) -> EvidenceDossier:
+    return EvidenceDossier(
+        id="dossier-q-binary",
+        question_id=question.id,
+        forecast_as_of=question.forecast_as_of,
+        evidence_items=[
+            EvidenceItem(
+                id="e-1",
+                text="Alice requested renewal paperwork.",
+                valid_from=question.forecast_as_of,
+                recorded_from=question.forecast_as_of,
+                source_id="source-1",
+                supports_branch=["yes"],
+                supersession_status="current_as_of",
+            )
+        ],
+        compiler="json_evidence.v1",
+    )
+
+
 def _resolution(question: ForecastQuestion) -> ForecastResolution:
     return ForecastResolution(
         id="resolution-q-binary",
@@ -162,6 +533,27 @@ def _score() -> ForecastScore:
         brier_score=0.18,
         log_score=0.3566749439,
         top_1_correct=True,
+    )
+
+
+def _decision() -> DecisionRecord:
+    return DecisionRecord(
+        decision_id="decision-q-binary",
+        decided_at=NOW,
+        decision_type="renewal_offer",
+        primary_forecast_run_id="run-q-binary",
+        rationale="Offer because renewal is the most likely outcome.",
+        expected_outcome_branch="yes",
+    )
+
+
+def _baseline_decision() -> BaselineDecisionRecord:
+    return BaselineDecisionRecord(
+        decision_id="baseline-decision-q-binary",
+        decided_at=NOW,
+        decision_type="renewal_offer",
+        rationale="Pre-forecast baseline decision.",
+        expected_outcome_branch="yes",
     )
 
 
@@ -350,3 +742,59 @@ async def test_repository_reuses_deterministic_resolution_record_id(store: Memor
         "tenant-1", deal.id, fact_key=ForecastRepository.RESOLUTION_FACT_KEY
     )
     assert len(facts) == 1
+
+
+@pytest.mark.asyncio
+async def test_json_graph_parity_for_questions_runs_and_resolutions(
+    store: MemoryStore, tmp_path
+) -> None:
+    deal = _make_deal_entity()
+    await store.upsert_entity(deal)
+    graph_repository = ForecastRepository(
+        store,
+        tenant_id="tenant-1",
+        conversation_id="forecasting",
+        message_id="forecast-message-1",
+    )
+    json_repository = JsonForecastRepository(tmp_path)
+
+    for index in range(3):
+        question = _make_question().model_copy(update={"id": f"fq-{index}"})
+        run = _make_run().model_copy(update={"id": f"fr-{index}", "question_id": question.id})
+        resolution = _make_resolution().model_copy(
+            update={"question_id": question.id, "run_id": run.id}
+        )
+        await graph_repository.save_question(question)
+        await graph_repository.save_run(target_entity_id=deal.id, run=run)
+        await graph_repository.save_resolution(target_entity_id=deal.id, resolution=resolution)
+        json_repository.save_question(question)
+        json_repository.save_run(run)
+        json_repository.save_resolution(resolution.model_copy(update={"id": f"res-{index}"}))
+
+    graph_questions = await graph_repository.list_questions(target_entity_id=deal.id)
+    graph_runs = []
+    for question in graph_questions:
+        graph_runs.extend(
+            await graph_repository.list_runs(target_entity_id=deal.id, question_id=question.id)
+        )
+    graph_resolutions = [
+        await graph_repository.get_resolution(target_entity_id=deal.id, question_id=question.id)
+        for question in graph_questions
+    ]
+
+    assert _normalized_models(json_repository.list_questions()) == _normalized_models(
+        graph_questions
+    )
+    assert _normalized_models(json_repository.list_runs()) == _normalized_models(graph_runs)
+    assert _normalized_models(
+        json_repository.list_resolutions(), exclude={"id"}
+    ) == _normalized_models(
+        [resolution for resolution in graph_resolutions if resolution is not None], exclude={"id"}
+    )
+
+
+def _normalized_models(models, *, exclude: set[str] | None = None):  # type: ignore[no-untyped-def]
+    return sorted(
+        json.dumps(model.model_dump(mode="json", exclude=exclude or set()), sort_keys=True)
+        for model in models
+    )

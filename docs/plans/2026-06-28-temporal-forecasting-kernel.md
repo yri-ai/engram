@@ -215,8 +215,19 @@ uv run engram forecast-score-report \
 ### NS-1: Neo4j adapter for `GraphEvidenceAdapter`
 
 - **Files:** create `Neo4jGraphEvidenceAdapter` in `src/engram/services/as_of_evidence.py`
-  (or `as_of_evidence_neo4j.py` if >150 lines); reuse read paths from
-  `src/engram/storage/neo4j.py` (`query_knowledge_as_of` and fact queries).
+  (or `as_of_evidence_neo4j.py` if >150 lines). Do **not** call
+  `Neo4jStore.query_knowledge_as_of` directly for adapter reads: that method is
+  name-based and outbound-relationship-only, while `GraphEvidenceAdapter`
+  requires entity IDs plus inbound/outbound relationships and facts. Implement
+  adapter-specific read queries by `entity_id` that mirror
+  `MemoryGraphEvidenceAdapter`: direct facts, inbound/outbound relationships,
+  one-hop related facts, `excluded_counts`, and a supersession scan.
+- **Neo4j query contract:** facts and relationships must apply the same
+  `_exclusion_reason` semantics as the memory adapter: `recorded_from <= as_of`,
+  `recorded_to is null OR recorded_to > as_of`, `valid_from <= as_of`,
+  `source_ingested_at <= as_of` when present in metadata, exclude resolution
+  evidence/post-hoc derived evidence, and include superseded facts in the
+  supersession scan even when `get_facts(..., active_only=True)` would hide them.
 - **Behavior contract:** must pass the same leakage tests as `MemoryGraphEvidenceAdapter`
   — parametrize `tests/unit/test_as_of_evidence.py` fixtures over both adapters
   (memory in unit lane, Neo4j in `tests/integration/` behind the existing
@@ -229,7 +240,9 @@ uv run engram forecast-score-report \
 - **Files:** `JsonForecastRepository` gains `dossiers/` dir + `save_dossier`/
   `load_dossier`/`list_dossiers` (same temp-file semantics; exclusive create like
   runs — a dossier is immutable once a run cites it); `forecast-dossier-compile`
-  CLI gains `--repo` write-through; `ForecastRun.dossier_id` becomes a checked
+  CLI gains ledger write-through via the existing `--repo`; preserve current
+  `--output` behavior for backward compatibility by making it optional and writing
+  both ledger and file when supplied; `ForecastRun.dossier_id` becomes a checked
   reference at `save_run` (dangling → `ValueError`).
 - **Migration:** additive (new directory) — no `schema_version` bump; existing
   ledgers remain valid. Rollback: ignore `dossiers/`.
@@ -241,10 +254,18 @@ uv run engram forecast-score-report \
 ### NS-3: Prompt/model protocol versions for LLM-assisted forecasting
 
 - **Files:** `src/engram/services/forecast_protocol.py` — extract a
-  `ForecastProtocol` Protocol (create_run signature); add `LLMForecastProtocol`
-  with `protocol="llm.v1"`, prompt template in `config/prompts/forecast_llm.jinja2`,
-  provider via existing `engram.llm.provider`; `protocol_config` records
+  `ForecastProtocol` Protocol (sync `create_run` signature for deterministic
+  implementations) and an `AsyncForecastProtocol` Protocol (`async create_run`) for
+  LLM-backed implementations. Add `LLMForecastProtocol` with `protocol="llm.v1"`,
+  Create: `config/prompts/forecast_llm.jinja2`, provider via existing async
+  `engram.llm.provider.LLMProvider.complete_json`; `protocol_config` records
   model name, prompt hash, temperature.
+- **CLI contract:** `forecast-run-create` remains backward compatible for the
+  deterministic protocol. When `--protocol llm.v1` is supplied, the command uses
+  `asyncio.run` (or an async helper mirroring existing CLI patterns) to invoke the
+  async protocol and then persists the resulting `ForecastRun` through the same
+  repository path. Do not block M7/M8 on NS-3; if this task is not selected for the
+  factory run, leave deterministic protocol behavior unchanged.
 - **Guardrails carried over:** branch-set guard, audit-mode dossier refusal, and
   citation validation are shared via the base — test them against BOTH protocols
   (parametrize existing protocol tests).

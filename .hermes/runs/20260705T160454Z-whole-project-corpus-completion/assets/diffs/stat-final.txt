@@ -1,0 +1,16 @@
+ .env.example                                       |   3 +
+ .../2026-05-18-forecast-lifecycle-master-plan.md   |  10 +-
+ .../2026-06-28-temporal-forecasting-kernel.md      |  33 +-
+ docs/plans/2026-07-04-forecast-lifecycle-m7-m8.md  |  10 +-
+ src/engram/cli/main.py                             | 225 +++++++++++-
+ src/engram/models/__init__.py                      |   9 +
+ src/engram/models/forecasting.py                   |  60 +++-
+ src/engram/services/as_of_evidence.py              |  90 ++++-
+ src/engram/services/forecast_protocol.py           | 100 ++++++
+ src/engram/services/forecast_repository.py         | 249 ++++++++++++-
+ src/engram/services/forecast_scoring.py            |  35 ++
+ tests/unit/test_cli.py                             | 236 +++++++++++++
+ tests/unit/test_forecast_protocol.py               |  40 +++
+ tests/unit/test_forecast_repository.py             | 393 ++++++++++++++++++++-
+ tests/unit/test_forecast_scoring.py                |  61 ++++
+ 15 files changed, 1515 insertions(+), 39 deletions(-)

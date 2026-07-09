@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Completion Report — Whole Forecast Lifecycle Factory</title><style>body{font-family:system-ui,Segoe UI,sans-serif;margin:2rem;line-height:1.45;max-width:1200px}pre{white-space:pre-wrap;background:#111;color:#eee;padding:1rem;border-radius:8px;overflow:auto}.badge{display:inline-block;padding:.25rem .55rem;border-radius:999px;background:#1a7f37;color:white;font-weight:700}.warn{background:#9a6700}.fail{background:#cf222e}code{background:#eee;padding:.1rem .25rem;border-radius:4px}table{border-collapse:collapse;margin:1rem 0}td,th{border:1px solid #ddd;padding:.35rem .6rem;vertical-align:top}</style></head><body><span class='badge warn'>PARTIAL</span><h1>Completion Report — Whole Forecast Lifecycle Factory</h1><h2>Overall status</h2><p><b>PARTIAL / BLOCKED_ON_CORPUS_DATA</b>. I reran the updated idea-to-implementation loop against the whole task inventory. M7 Tasks 0–5, M8 Tasks 1–3, and NS-1…NS-5 are implemented and verified. M8 Task 4 is still not accepted because it requires 20+ real public deals; the repo currently has 2 fixture deals.</p><h2>Whole Project Completion</h2><table><tr><th>Item</th><th>Requirement</th><th>Status</th><th>Evidence/Notes</th></tr><tr><td>M7 Task 0</td><td>Deprecate legacy CLI commands</td><td>done</td><td>warnings + tests</td></tr><tr><td>M7 Task 1</td><td>schema_version, dossier persistence, migration, backend parity</td><td>done</td><td>implemented + tests</td></tr><tr><td>M7 Task 2</td><td>decision models + repository support</td><td>done</td><td>implemented + tests</td></tr><tr><td>M7 Task 3</td><td>decision CLI + impact report</td><td>done</td><td>implemented + tests</td></tr><tr><td>M7 Task 4</td><td>lifecycle audit command</td><td>done</td><td>implemented + tests/e2e</td></tr><tr><td>M7 Task 5</td><td>metrics consolidation seam</td><td>done</td><td>implemented + tests</td></tr><tr><td>M8 Task 1</td><td>corpus schema + fixtures</td><td>done</td><td>implemented + tests</td></tr><tr><td>M8 Task 2</td><td>acquisition scripts</td><td>done</td><td>EDGAR/CourtListener parser scripts + tests</td></tr><tr><td>M8 Task 3</td><td>corpus → lifecycle loader</td><td>done</td><td>loader persists questions/dossiers/runs/resolutions; audit-clean fixture ledger</td></tr><tr><td>M8 Task 4</td><td>corpus acceptance gate 20+ real deals</td><td>blocked</td><td>artifact exists; 2 fixture deals only, needs real data curation</td></tr><tr><td>NS-1</td><td>Neo4j GraphEvidenceAdapter</td><td>done</td><td>adapter implemented</td></tr><tr><td>NS-2</td><td>persist evidence dossiers</td><td>done</td><td>covered by M7 Task 1</td></tr><tr><td>NS-3</td><td>LLM-assisted protocol</td><td>done</td><td>protocol + CLI --protocol llm.v1 + mocked tests</td></tr><tr><td>NS-4</td><td>real-estate diligence demo</td><td>done</td><td>examples/diligence-demo + e2e test</td></tr><tr><td>NS-5</td><td>prequential belief updates</td><td>done</td><td>BeliefUpdate, updates dir, update-quality report + tests</td></tr></table><h2>Verification</h2><table><tr><th>Command</th><th>Status</th><th>Evidence</th></tr>
+<tr><td><code>uv run pytest -q</code></td><td>PASS</td><td>408 passed in 28.19s</td></tr>
+<tr><td><code>uv run mypy src</code></td><td>PASS</td><td>Success: no issues found in 69 source files</td></tr>
+<tr><td><code>uv run ruff check</code></td><td>PASS</td><td>All checks passed</td></tr>
+<tr><td><code>spec-compliance scan_codebase.py src/engram tests</code></td><td>PASS</td><td>0 findings in source and tests</td></tr>
+</table><h2>Report artifact</h2><p>Open this file for review: <code>.hermes/runs/20260704T235853Z-forecast-lifecycle-m7m8/COMPLETION_REPORT.html</code></p><h2>Required next step to reach PASS</h2><p>Curate/fetch 18+ additional real public deals (11–14 EDGAR REIT and 7–9 CourtListener), rerun <code>scripts/data_collection/build_corpus_questions.py</code>, rerun <code>forecast-audit-report</code>, and regenerate <code>outputs/results/corpus_acceptance_v1.json</code> as accepted.</p><h2>Working tree</h2><pre> M .env.example
+ M docs/plans/2026-05-18-forecast-lifecycle-master-plan.md
+ M docs/plans/2026-06-28-temporal-forecasting-kernel.md
+ M docs/plans/2026-07-04-forecast-lifecycle-m7-m8.md
+ M src/engram/cli/main.py
+ M src/engram/models/__init__.py
+ M src/engram/models/forecasting.py
+ M src/engram/services/as_of_evidence.py
+ M src/engram/services/forecast_protocol.py
+ M src/engram/services/forecast_repository.py
+ M src/engram/services/forecast_scoring.py
+ M tests/unit/test_cli.py
+ M tests/unit/test_forecast_protocol.py
+ M tests/unit/test_forecast_repository.py
+ M tests/unit/test_forecast_scoring.py
+?? .hermes/runs/20260704T235853Z-forecast-lifecycle-m7m8/
+?? docs/corpus-schema.md
+?? docs/plans/decisions/corpus-acceptance-decision.md
+?? examples/diligence-demo/
+?? scripts/data_collection/build_corpus_questions.py
+?? scripts/data_collection/fetch_courtlistener.py
+?? scripts/data_collection/fetch_edgar_reit.py
+?? src/engram/forecasting/
+?? src/engram/models/corpus.py
+?? src/engram/services/forecast_audit.py
+?? src/engram/services/forecast_impact.py
+?? tests/e2e/test_diligence_demo.py
+?? tests/fixtures/corpus/
+?? tests/unit/test_corpus_models.py
+?? tests/unit/test_corpus_pipeline.py
+</pre><script type='application/json' id='report-metadata'>{&quot;run_id&quot;: &quot;20260704T235853Z-forecast-lifecycle-m7m8&quot;, &quot;generated_at&quot;: &quot;2026-07-05T15:48:54.052650+00:00&quot;, &quot;repo&quot;: &quot;/home/leo/dev/projects/engram/.worktree/forecast-lifecycle-m7-m8&quot;, &quot;branch&quot;: &quot;wf/forecast-lifecycle-m7-m8&quot;, &quot;whole_project_status&quot;: &quot;PARTIAL_BLOCKED_ON_CORPUS_DATA&quot;}</script></body></html>

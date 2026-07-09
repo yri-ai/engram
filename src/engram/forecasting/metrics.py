@@ -1,19 +1,67 @@
-"""Forecast metrics for Phase 0 evaluation harnesses."""
+"""Forecast metric helpers and lifecycle scoring seams.
+
+The single-run lifecycle scoring helpers delegate to
+``engram.services.forecast_scoring`` so there is one canonical implementation,
+while the Phase 0 evaluation harness also gets batch metrics over prediction
+rows.
+"""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
+from typing import cast, overload
 
 import numpy as np
+
+from engram.services.forecast_scoring import (
+    assign_calibration_bucket,
+    binary_brier_score,
+    log_score,
+    probability_assigned_to_resolved_branch,
+    top_1_accuracy,
+    top_k_accuracy,
+)
+from engram.services.forecast_scoring import (
+    multiclass_brier_score as _single_multiclass_brier_score,
+)
 
 ProbabilityRow = Mapping[str, float]
 
 
+@overload
 def multiclass_brier_score(
-    predictions: Sequence[ProbabilityRow], labels: Sequence[str], classes: Sequence[str]
+    arg1: Sequence[ProbabilityRow], arg2: Sequence[str], classes: Sequence[str]
+) -> float: ...
+
+
+@overload
+def multiclass_brier_score(arg1: Mapping[str, float], arg2: str, classes: None = None) -> float: ...
+
+
+def multiclass_brier_score(
+    arg1: object,
+    arg2: object,
+    classes: Sequence[str] | None = None,
 ) -> float:
-    """Return mean multiclass Brier score over the supplied classes."""
+    """Return multiclass Brier score for either batch rows or one forecast run.
+
+    ``multiclass_brier_score(probabilities, resolved_branch)`` is the lifecycle
+    scoring seam. ``multiclass_brier_score(predictions, labels, classes)`` is
+    the Phase 0 harness batch metric.
+    """
+    if classes is None:
+        if not isinstance(arg2, str):
+            raise TypeError("resolved_branch must be a string")
+        if not isinstance(arg1, Mapping):
+            raise TypeError("probabilities must be a mapping when classes is omitted")
+        probabilities = {str(key): float(value) for key, value in arg1.items()}
+        return _single_multiclass_brier_score(probabilities, arg2)
+
+    if isinstance(arg2, str):
+        raise TypeError("labels must be a sequence when classes is provided")
+    predictions = cast("Sequence[ProbabilityRow]", arg1)
+    labels = cast("Sequence[str]", arg2)
     if not predictions:
         return 0.0
     total = 0.0
@@ -177,3 +225,21 @@ def _distance_cost_matrix(classes: Sequence[str]) -> dict[tuple[str, str], float
         for actual in classes
         for predicted in classes
     }
+
+
+__all__ = [
+    "assign_calibration_bucket",
+    "binary_brier_score",
+    "calibration_bins",
+    "expected_calibration_error",
+    "log_loss",
+    "log_score",
+    "loss_weighted_error",
+    "multiclass_brier_score",
+    "one_vs_rest_auc",
+    "ProbabilityRow",
+    "probability_assigned_to_resolved_branch",
+    "top1_accuracy",
+    "top_1_accuracy",
+    "top_k_accuracy",
+]

@@ -1,0 +1,38 @@
+{
+  "deal_id": "revenue-management-commerce-bank-2025",
+  "source_kind": "courtlistener",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.courtlistener.com/docket/69688892/revenue-management-solutions-llc-v-commerce-bank/",
+      "published_at": "2025-01-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Revenue Management Solutions v. Commerce Bank",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.courtlistener.com/docket/69688892/revenue-management-solutions-llc-v-commerce-bank/",
+      "published_at": "2025-01-01T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "Revenue Management Solutions v. Commerce Bank",
+      "summary": "CourtListener docket for bank dispute relevant to distressed commercial obligations.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2025-01-01T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "Revenue Management Solutions v. Commerce Bank"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: reprice_or_restructure."
+    }
+  ],
+  "resolved_branch": "reprice_or_restructure",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}

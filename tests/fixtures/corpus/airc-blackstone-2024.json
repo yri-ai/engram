@@ -1,0 +1,38 @@
+{
+  "deal_id": "airc-blackstone-2024",
+  "source_kind": "edgar_reit",
+  "evidence_docs": [
+    {
+      "doc_id": "forecast-context-1",
+      "url": "https://www.blackstone.com/news/press/blackstone-real-estate-completes-privatization-of-air-communities-for-approximately-10-billion/",
+      "published_at": "2024-06-28T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "AIR Communities / Blackstone privatization",
+      "summary": "Public pre-resolution context source for the deal or distress process; outcome evidence is recorded separately.",
+      "role": "forecast_evidence"
+    },
+    {
+      "doc_id": "public-source-1",
+      "url": "https://www.blackstone.com/news/press/blackstone-real-estate-completes-privatization-of-air-communities-for-approximately-10-billion/",
+      "published_at": "2024-06-28T00:00:00+00:00",
+      "retrieved_at": "2026-07-05T00:00:00+00:00",
+      "text_ref": "AIR Communities / Blackstone privatization",
+      "summary": "Blackstone Real Estate completed privatization of AIR Communities.",
+      "role": "resolution_evidence"
+    }
+  ],
+  "milestones": [
+    {
+      "at": "2024-06-28T00:00:00+00:00",
+      "kind": "public_source_observed",
+      "description": "AIR Communities / Blackstone privatization"
+    },
+    {
+      "at": "2026-07-05T00:00:00+00:00",
+      "kind": "curated_resolution",
+      "description": "Curated public corpus resolution: advance_or_close."
+    }
+  ],
+  "resolved_branch": "advance_or_close",
+  "resolved_at": "2026-07-05T00:00:00+00:00"
+}
